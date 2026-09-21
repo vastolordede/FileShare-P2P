@@ -34,3 +34,5 @@ Thumbs.db
 downloads/
 shared/
 tmp/
+
+**/bin/
