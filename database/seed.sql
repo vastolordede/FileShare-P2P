@@ -1,0 +1,9 @@
+-- Week 1 intentionally does NOT include a plaintext sample password.
+--
+-- From Week 2, create users through application code or generate a BCrypt
+-- password hash and insert only the hash into users.password_hash.
+--
+-- Example shape only:
+--
+-- INSERT INTO users (username, password_hash)
+-- VALUES ('dang', '<BCRYPT_HASH>');
