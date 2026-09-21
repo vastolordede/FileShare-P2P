@@ -1,0 +1,36 @@
+# Gradle
+.gradle/
+build/
+**/build/
+
+# IntelliJ IDEA
+.idea/
+*.iml
+out/
+
+# VS Code
+.vscode/
+
+# Local configuration / secrets
+**/application.properties
+.env
+*.env
+
+# Certificates / keystores (will be added later)
+*.jks
+*.p12
+*.pem
+*.key
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test/generated files
+downloads/
+shared/
+tmp/

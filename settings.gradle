@@ -1,0 +1,5 @@
+rootProject.name = 'FileShare-P2P'
+
+include 'common'
+include 'tracker-server'
+include 'peer-client'
