@@ -1,0 +1,26 @@
+.login-root {
+    -fx-font-family: "Segoe UI";
+}
+
+.title {
+    -fx-font-size: 23px;
+    -fx-font-weight: bold;
+}
+
+.subtitle {
+    -fx-font-size: 14px;
+}
+
+.text-field,
+.password-field,
+.button {
+    -fx-pref-height: 40px;
+}
+
+.button {
+    -fx-font-weight: bold;
+}
+
+.status {
+    -fx-padding: 10 0 0 0;
+}
