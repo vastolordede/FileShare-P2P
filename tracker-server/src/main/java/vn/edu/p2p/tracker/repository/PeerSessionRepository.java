@@ -17,4 +17,6 @@ public interface PeerSessionRepository {
     boolean updateLastSeen(UUID sessionId, OffsetDateTime lastSeen) throws SQLException;
 
     boolean markLoggedOut(UUID sessionId, OffsetDateTime logoutAt) throws SQLException;
+
+    int expireStaleSessions(OffsetDateTime staleBefore) throws SQLException;
 }
