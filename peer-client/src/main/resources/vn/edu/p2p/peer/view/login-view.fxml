@@ -54,4 +54,9 @@
            wrapText="true"
            maxWidth="320"
            styleClass="status"/>
+
+    <Label fx:id="connectionStatusLabel"
+           wrapText="true"
+           maxWidth="320"
+           styleClass="status"/>
 </VBox>

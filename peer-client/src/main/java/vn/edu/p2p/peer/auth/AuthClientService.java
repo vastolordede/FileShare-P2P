@@ -1,5 +1,7 @@
 package vn.edu.p2p.peer.auth;
 
+import vn.edu.p2p.common.dto.HeartbeatRequest;
+import vn.edu.p2p.common.dto.HeartbeatResponse;
 import vn.edu.p2p.common.dto.LoginRequest;
 import vn.edu.p2p.common.dto.LoginResponse;
 import vn.edu.p2p.common.dto.LogoutRequest;
@@ -95,8 +97,53 @@ public final class AuthClientService implements AutoCloseable {
         currentSession = null;
     }
 
+    public synchronized HeartbeatResponse heartbeat() throws AuthClientException {
+        if (currentSession == null) {
+            throw new AuthClientException(
+                    "INVALID_SESSION",
+                    "Peer is not logged in."
+            );
+        }
+
+        MessageEnvelope request = MessageEnvelope.request(
+                MessageType.HEARTBEAT,
+                UUID.randomUUID().toString(),
+                ProtocolCodec.toPayload(
+                        new HeartbeatRequest(currentSession.sessionId())
+                )
+        );
+
+        MessageEnvelope response = send(request);
+        requireType(response, MessageType.HEARTBEAT_ACK);
+        requireSuccess(response);
+
+        try {
+            HeartbeatResponse heartbeatResponse = ProtocolCodec.fromPayload(
+                    response.payload(),
+                    HeartbeatResponse.class
+            );
+            if (heartbeatResponse == null) {
+                throw new AuthClientException(
+                        "INVALID_RESPONSE",
+                        "Tracker returned an empty heartbeat response."
+                );
+            }
+            return heartbeatResponse;
+        } catch (IOException e) {
+            throw new AuthClientException(
+                    "INVALID_RESPONSE",
+                    "Cannot decode Tracker heartbeat response.",
+                    e
+            );
+        }
+    }
+
     public synchronized ClientSession currentSession() {
         return currentSession;
+    }
+
+    public synchronized void invalidateLocalSession() {
+        currentSession = null;
     }
 
     private MessageEnvelope send(MessageEnvelope request) throws AuthClientException {
