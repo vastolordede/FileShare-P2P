@@ -84,7 +84,7 @@ public final class JdbcPeerSessionRepository implements PeerSessionRepository {
     }
 
     @Override
-    public void updateLastSeen(UUID sessionId, OffsetDateTime lastSeen) throws SQLException {
+    public boolean updateLastSeen(UUID sessionId, OffsetDateTime lastSeen) throws SQLException {
         String sql = """
                 UPDATE peer_sessions
                 SET last_seen = ?
@@ -95,7 +95,7 @@ public final class JdbcPeerSessionRepository implements PeerSessionRepository {
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setObject(1, lastSeen);
             statement.setObject(2, sessionId);
-            statement.executeUpdate();
+            return statement.executeUpdate() > 0;
         }
     }
 

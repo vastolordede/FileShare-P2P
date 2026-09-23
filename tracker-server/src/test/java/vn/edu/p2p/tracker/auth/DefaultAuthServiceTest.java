@@ -166,8 +166,8 @@ class DefaultAuthServiceTest {
         }
 
         @Override
-        public void updateLastSeen(UUID sessionId, OffsetDateTime lastSeen) {
-            // Week 3 behavior, not needed here
+        public boolean updateLastSeen(UUID sessionId, OffsetDateTime lastSeen) {
+            return sessions.containsKey(sessionId);
         }
 
         @Override
