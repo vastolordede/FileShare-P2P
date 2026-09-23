@@ -2,7 +2,7 @@
 
 ## Framing
 
-TCP is a byte stream. A message is encoded as:
+TCP is a byte stream. A control message is encoded as:
 
 ```text
 +----------------------+-------------------------+
@@ -10,9 +10,7 @@ TCP is a byte stream. A message is encoded as:
 +----------------------+-------------------------+
 ```
 
-`ProtocolCodec` implements this framing.
-
-Maximum control JSON size in Week 1: **1 MiB**.
+`ProtocolCodec` implements this framing. Maximum control JSON size: **1 MiB**.
 
 ## Common envelope
 
@@ -25,23 +23,8 @@ Maximum control JSON size in Week 1: **1 MiB**.
 }
 ```
 
-Response can contain:
-
-```json
-{
-  "status": "SUCCESS"
-}
-```
-
-or:
-
-```json
-{
-  "status": "ERROR",
-  "errorCode": "INVALID_CREDENTIALS",
-  "message": "Invalid username or password"
-}
-```
+A response contains `status=SUCCESS` or `status=ERROR`. Error responses may also
+contain `errorCode` and `message`.
 
 ## LOGIN_REQUEST
 
@@ -52,14 +35,24 @@ or:
   "requestId": "550e8400-e29b-41d4-a716-446655440000",
   "payload": {
     "username": "dang",
-    "password": "123456",
-    "listeningPort": 7001
+    "password": "Test123!",
+    "listeningPort": 7001,
+    "peerId": "d50bb84a-2924-4f42-a533-57c6bc72ca63",
+    "deviceName": "DESKTOP-ABC"
   }
 }
 ```
 
-The password is never stored plaintext. Before real credentials are sent,
-the TCP channel must be protected by TLS.
+`peerId` is a stable UUID stored locally by each Peer. The Tracker uses it to
+associate repeated logins with the same machine/client record.
+
+### Week 2 security note
+
+Week 2 implements the required TCP login milestone. The password is still sent
+inside the TCP control message, so **use test credentials only**. Before the
+final security milestone, the same protocol must run over TLS (`SSLSocket` /
+`SSLServerSocket`) so credentials and control traffic are encrypted in transit.
+Passwords stored in PostgreSQL are already BCrypt hashes.
 
 ## LOGIN_RESPONSE — success
 
@@ -86,39 +79,11 @@ the TCP channel must be protected by TLS.
   "requestId": "550e8400-e29b-41d4-a716-446655440000",
   "status": "ERROR",
   "errorCode": "INVALID_CREDENTIALS",
-  "message": "Invalid username or password"
+  "message": "Invalid username or password."
 }
 ```
 
-Do not distinguish “username exists” from “password is wrong” in the
-external response.
-
-## HEARTBEAT
-
-```json
-{
-  "version": 1,
-  "type": "HEARTBEAT",
-  "requestId": "52abe927-ef30-4057-a821-d5b92aec17ee",
-  "payload": {
-    "sessionId": "caf975e7-db6f-4a10-a08d-361be518fe78"
-  }
-}
-```
-
-## HEARTBEAT_ACK
-
-```json
-{
-  "version": 1,
-  "type": "HEARTBEAT_ACK",
-  "requestId": "52abe927-ef30-4057-a821-d5b92aec17ee",
-  "status": "SUCCESS",
-  "payload": {
-    "serverTimeEpochMillis": 1789981200000
-  }
-}
-```
+Do not reveal whether the username or password was the failing field.
 
 ## LOGOUT_REQUEST
 
@@ -144,7 +109,12 @@ external response.
 }
 ```
 
+## HEARTBEAT
+
+The message type is reserved in protocol v1. Persistence/update of `last_seen`
+and the automatic Online/Offline monitor are implemented in Week 3.
+
 ## Extension rule for the team
 
-Other features must extend `MessageType` and keep the same envelope/framing.
-Do not create a second incompatible protocol.
+Other features must extend `MessageType` and keep this envelope/framing. Do not
+create a second incompatible control protocol.

@@ -15,7 +15,13 @@ class ProtocolCodecTest {
     @Test
     void shouldRoundTripLengthPrefixedLoginRequest() throws Exception {
         String requestId = UUID.randomUUID().toString();
-        LoginRequest login = new LoginRequest("dang", "secret", 7001);
+        LoginRequest login = new LoginRequest(
+                "dang",
+                "secret",
+                7001,
+                UUID.randomUUID().toString(),
+                "DESKTOP-TEST"
+        );
 
         MessageEnvelope original = MessageEnvelope.request(
                 MessageType.LOGIN_REQUEST,

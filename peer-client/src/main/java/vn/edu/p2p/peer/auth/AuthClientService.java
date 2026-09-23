@@ -1,52 +1,141 @@
 package vn.edu.p2p.peer.auth;
 
-import vn.edu.p2p.common.dto.HeartbeatRequest;
 import vn.edu.p2p.common.dto.LoginRequest;
+import vn.edu.p2p.common.dto.LoginResponse;
 import vn.edu.p2p.common.dto.LogoutRequest;
 import vn.edu.p2p.common.protocol.MessageEnvelope;
 import vn.edu.p2p.common.protocol.MessageType;
 import vn.edu.p2p.common.protocol.ProtocolCodec;
+import vn.edu.p2p.common.protocol.ResponseStatus;
+import vn.edu.p2p.peer.network.TrackerConnection;
+import vn.edu.p2p.peer.session.ClientSession;
 
+import java.io.IOException;
 import java.util.UUID;
 
-/**
- * Week 1 responsibility: build protocol messages only.
- *
- * Week 2 will send them through TrackerConnection.
- */
-public final class AuthClientService {
+public final class AuthClientService implements AutoCloseable {
+    private final TrackerConnection connection;
+    private final PeerIdentity peerIdentity;
+    private ClientSession currentSession;
 
-    public MessageEnvelope createLoginRequest(
+    public AuthClientService(
+            TrackerConnection connection,
+            PeerIdentity peerIdentity
+    ) {
+        this.connection = connection;
+        this.peerIdentity = peerIdentity;
+    }
+
+    public synchronized ClientSession login(
             String username,
             String password,
             int listeningPort
-    ) {
+    ) throws AuthClientException {
         LoginRequest payload = new LoginRequest(
                 username,
                 password,
-                listeningPort
+                listeningPort,
+                peerIdentity.peerId(),
+                peerIdentity.deviceName()
         );
 
-        return MessageEnvelope.request(
+        MessageEnvelope request = MessageEnvelope.request(
                 MessageType.LOGIN_REQUEST,
                 UUID.randomUUID().toString(),
                 ProtocolCodec.toPayload(payload)
         );
+
+        MessageEnvelope response = send(request);
+        requireType(response, MessageType.LOGIN_RESPONSE);
+        requireSuccess(response);
+
+        try {
+            LoginResponse loginResponse = ProtocolCodec.fromPayload(
+                    response.payload(),
+                    LoginResponse.class
+            );
+            if (loginResponse == null) {
+                throw new AuthClientException(
+                        "INVALID_RESPONSE",
+                        "Tracker returned an empty login response."
+                );
+            }
+
+            currentSession = new ClientSession(
+                    loginResponse.peerId(),
+                    loginResponse.sessionId(),
+                    loginResponse.heartbeatIntervalSeconds()
+            );
+            return currentSession;
+        } catch (IOException e) {
+            throw new AuthClientException(
+                    "INVALID_RESPONSE",
+                    "Cannot decode Tracker login response.",
+                    e
+            );
+        }
     }
 
-    public MessageEnvelope createHeartbeatRequest(String sessionId) {
-        return MessageEnvelope.request(
-                MessageType.HEARTBEAT,
-                UUID.randomUUID().toString(),
-                ProtocolCodec.toPayload(new HeartbeatRequest(sessionId))
-        );
-    }
+    public synchronized void logout() throws AuthClientException {
+        if (currentSession == null) {
+            return;
+        }
 
-    public MessageEnvelope createLogoutRequest(String sessionId) {
-        return MessageEnvelope.request(
+        MessageEnvelope request = MessageEnvelope.request(
                 MessageType.LOGOUT_REQUEST,
                 UUID.randomUUID().toString(),
-                ProtocolCodec.toPayload(new LogoutRequest(sessionId))
+                ProtocolCodec.toPayload(
+                        new LogoutRequest(currentSession.sessionId())
+                )
         );
+
+        MessageEnvelope response = send(request);
+        requireType(response, MessageType.LOGOUT_RESPONSE);
+        requireSuccess(response);
+        currentSession = null;
+    }
+
+    public synchronized ClientSession currentSession() {
+        return currentSession;
+    }
+
+    private MessageEnvelope send(MessageEnvelope request) throws AuthClientException {
+        try {
+            return connection.request(request);
+        } catch (IOException e) {
+            throw new AuthClientException(
+                    "NETWORK_ERROR",
+                    "Cannot connect to Tracker: " + e.getMessage(),
+                    e
+            );
+        }
+    }
+
+    private static void requireType(
+            MessageEnvelope response,
+            MessageType expected
+    ) throws AuthClientException {
+        if (response.type() != expected) {
+            throw new AuthClientException(
+                    "INVALID_RESPONSE",
+                    "Expected " + expected + " but received " + response.type()
+            );
+        }
+    }
+
+    private static void requireSuccess(MessageEnvelope response)
+            throws AuthClientException {
+        if (response.status() != ResponseStatus.SUCCESS) {
+            throw new AuthClientException(
+                    response.errorCode() == null ? "TRACKER_ERROR" : response.errorCode(),
+                    response.message() == null ? "Tracker rejected the request." : response.message()
+            );
+        }
+    }
+
+    @Override
+    public synchronized void close() {
+        connection.close();
+        currentSession = null;
     }
 }

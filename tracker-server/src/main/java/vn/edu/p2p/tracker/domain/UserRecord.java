@@ -6,7 +6,10 @@ public record UserRecord(
         long userId,
         String username,
         String passwordHash,
-        boolean active,
+        AccountStatus accountStatus,
         OffsetDateTime createdAt
 ) {
+    public boolean isActive() {
+        return accountStatus == AccountStatus.ACTIVE;
+    }
 }

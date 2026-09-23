@@ -5,10 +5,12 @@ import javafx.fxml.FXMLLoader;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.stage.Stage;
+import vn.edu.p2p.peer.auth.LoginController;
 
 import java.io.IOException;
 
 public final class PeerApplication extends Application {
+    private LoginController loginController;
 
     @Override
     public void start(Stage stage) throws IOException {
@@ -19,8 +21,9 @@ public final class PeerApplication extends Application {
         );
 
         Parent root = loader.load();
+        loginController = loader.getController();
 
-        Scene scene = new Scene(root, 460, 420);
+        Scene scene = new Scene(root, 460, 450);
         var css = PeerApplication.class.getResource(
                 "/vn/edu/p2p/peer/view/styles.css"
         );
@@ -30,9 +33,16 @@ public final class PeerApplication extends Application {
 
         stage.setTitle("FileShare-P2P");
         stage.setMinWidth(460);
-        stage.setMinHeight(420);
+        stage.setMinHeight(450);
         stage.setScene(scene);
         stage.show();
+    }
+
+    @Override
+    public void stop() {
+        if (loginController != null) {
+            loginController.shutdown();
+        }
     }
 
     public static void main(String[] args) {
