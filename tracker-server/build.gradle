@@ -21,3 +21,10 @@ dependencies {
 application {
     mainClass = 'vn.edu.p2p.tracker.TrackerApplication'
 }
+
+tasks.register('createUser', JavaExec) {
+    group = 'application'
+    description = 'Create an ACTIVE local test user in PostgreSQL'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'vn.edu.p2p.tracker.tools.CreateUserTool'
+}

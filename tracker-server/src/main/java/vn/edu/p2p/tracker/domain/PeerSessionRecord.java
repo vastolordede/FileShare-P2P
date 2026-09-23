@@ -5,7 +5,6 @@ import java.util.UUID;
 
 public record PeerSessionRecord(
         UUID sessionId,
-        long userId,
         UUID peerId,
         String ipAddress,
         int listeningPort,
