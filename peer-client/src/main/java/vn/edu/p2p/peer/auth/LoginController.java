@@ -6,15 +6,26 @@ import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.PasswordField;
 import javafx.scene.control.TextField;
+import vn.edu.p2p.common.dto.HeartbeatResponse;
 import vn.edu.p2p.peer.network.PeerSettings;
 import vn.edu.p2p.peer.network.TrackerConnection;
 import vn.edu.p2p.peer.session.ClientSession;
+import vn.edu.p2p.peer.session.HeartbeatCoordinator;
+import vn.edu.p2p.peer.session.HeartbeatListener;
+import vn.edu.p2p.peer.session.PeerConnectionState;
 
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public final class LoginController {
+
+    private static final DateTimeFormatter TIME_FORMAT =
+            DateTimeFormatter.ofPattern("HH:mm:ss")
+                    .withZone(ZoneId.systemDefault());
 
     @FXML
     private TextField usernameField;
@@ -34,6 +45,9 @@ public final class LoginController {
     @FXML
     private Label statusLabel;
 
+    @FXML
+    private Label connectionStatusLabel;
+
     private final ExecutorService ioExecutor = Executors.newSingleThreadExecutor(runnable -> {
         Thread thread = new Thread(runnable, "peer-auth-io");
         thread.setDaemon(true);
@@ -41,12 +55,14 @@ public final class LoginController {
     });
 
     private AuthClientService authClientService;
+    private HeartbeatCoordinator heartbeatCoordinator;
     private String initializationError;
 
     @FXML
     private void initialize() {
         listeningPortField.setText("7001");
         logoutButton.setDisable(true);
+        connectionStatusLabel.setText("Tracker: chưa đăng nhập");
 
         try {
             PeerSettings settings = PeerSettings.load();
@@ -55,6 +71,10 @@ public final class LoginController {
                     settings.trackerConnectionConfig()
             );
             authClientService = new AuthClientService(connection, identity);
+            heartbeatCoordinator = new HeartbeatCoordinator(
+                    authClientService::heartbeat,
+                    new UiHeartbeatListener()
+            );
 
             statusLabel.setText(
                     "Tracker: " + settings.trackerHost() + ":" + settings.trackerPort()
@@ -89,6 +109,7 @@ public final class LoginController {
 
         setBusy(true);
         statusLabel.setText("Đang kết nối Tracker...");
+        connectionStatusLabel.setText("Tracker: CONNECTING");
 
         CompletableFuture
                 .supplyAsync(() -> {
@@ -108,6 +129,7 @@ public final class LoginController {
                     if (throwable != null) {
                         Throwable cause = unwrap(throwable);
                         statusLabel.setText("Đăng nhập thất bại: " + cause.getMessage());
+                        connectionStatusLabel.setText("Tracker: OFFLINE");
                         return;
                     }
 
@@ -119,6 +141,11 @@ public final class LoginController {
     private void onLogout() {
         if (authClientService == null || authClientService.currentSession() == null) {
             return;
+        }
+
+        ClientSession currentSession = authClientService.currentSession();
+        if (heartbeatCoordinator != null) {
+            heartbeatCoordinator.stop();
         }
 
         setBusy(true);
@@ -138,15 +165,14 @@ public final class LoginController {
                     if (throwable != null) {
                         Throwable cause = unwrap(throwable);
                         statusLabel.setText("Đăng xuất thất bại: " + cause.getMessage());
+                        if (heartbeatCoordinator != null
+                                && authClientService.currentSession() != null) {
+                            heartbeatCoordinator.start(currentSession);
+                        }
                         return;
                     }
 
-                    usernameField.setDisable(false);
-                    passwordField.setDisable(false);
-                    listeningPortField.setDisable(false);
-                    loginButton.setDisable(false);
-                    logoutButton.setDisable(true);
-                    statusLabel.setText("Đã đăng xuất khỏi Tracker.");
+                    resetLoggedOutUi("Đã đăng xuất khỏi Tracker.");
                 }));
     }
 
@@ -161,6 +187,30 @@ public final class LoginController {
                 "Đăng nhập thành công. Peer=" + shortId(session.peerId())
                         + " | Session=" + shortId(session.sessionId())
         );
+        connectionStatusLabel.setText("Tracker: ONLINE");
+
+        if (heartbeatCoordinator != null) {
+            heartbeatCoordinator.start(session);
+        }
+    }
+
+    private void resetLoggedOutUi(String message) {
+        if (heartbeatCoordinator != null) {
+            heartbeatCoordinator.stop();
+        }
+
+        usernameField.setDisable(false);
+        passwordField.setDisable(false);
+        listeningPortField.setDisable(false);
+        loginButton.setDisable(false);
+        logoutButton.setDisable(true);
+        statusLabel.setText(message);
+        connectionStatusLabel.setText("Tracker: LOGGED OUT");
+    }
+
+    private void onSessionExpired(String message) {
+        authClientService.invalidateLocalSession();
+        resetLoggedOutUi(message);
     }
 
     private void setBusy(boolean busy) {
@@ -177,6 +227,9 @@ public final class LoginController {
     }
 
     public void shutdown() {
+        if (heartbeatCoordinator != null) {
+            heartbeatCoordinator.close();
+        }
         if (authClientService != null) {
             authClientService.close();
         }
@@ -195,6 +248,35 @@ public final class LoginController {
 
     private static String shortId(String id) {
         return id == null || id.length() <= 8 ? id : id.substring(0, 8);
+    }
+
+    private final class UiHeartbeatListener implements HeartbeatListener {
+        @Override
+        public void onHeartbeat(HeartbeatResponse response) {
+            Platform.runLater(() -> connectionStatusLabel.setText(
+                    "Tracker: ONLINE • heartbeat "
+                            + TIME_FORMAT.format(
+                                    Instant.ofEpochMilli(response.serverTimeEpochMillis())
+                            )
+            ));
+        }
+
+        @Override
+        public void onStateChanged(PeerConnectionState state, String message) {
+            Platform.runLater(() -> {
+                switch (state) {
+                    case ONLINE -> {
+                        if (!connectionStatusLabel.getText().startsWith("Tracker: ONLINE •")) {
+                            connectionStatusLabel.setText("Tracker: ONLINE");
+                        }
+                    }
+                    case CONNECTION_LOST ->
+                            connectionStatusLabel.setText("Tracker: CONNECTION LOST");
+                    case SESSION_EXPIRED -> onSessionExpired(message);
+                    case LOGGED_OUT -> connectionStatusLabel.setText("Tracker: LOGGED OUT");
+                }
+            });
+        }
     }
 
     private static final class AuthOperationRuntimeException extends RuntimeException {
