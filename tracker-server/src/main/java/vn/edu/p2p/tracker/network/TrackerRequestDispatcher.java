@@ -1,5 +1,7 @@
 package vn.edu.p2p.tracker.network;
 
+import vn.edu.p2p.common.dto.HeartbeatRequest;
+import vn.edu.p2p.common.dto.HeartbeatResponse;
 import vn.edu.p2p.common.dto.LoginRequest;
 import vn.edu.p2p.common.dto.LoginResponse;
 import vn.edu.p2p.common.dto.LogoutRequest;
@@ -8,12 +10,19 @@ import vn.edu.p2p.common.protocol.MessageType;
 import vn.edu.p2p.common.protocol.ProtocolCodec;
 import vn.edu.p2p.tracker.auth.AuthException;
 import vn.edu.p2p.tracker.auth.AuthService;
+import vn.edu.p2p.tracker.peer.PeerSessionService;
+import vn.edu.p2p.tracker.peer.SessionException;
 
 public final class TrackerRequestDispatcher {
     private final AuthService authService;
+    private final PeerSessionService peerSessionService;
 
-    public TrackerRequestDispatcher(AuthService authService) {
+    public TrackerRequestDispatcher(
+            AuthService authService,
+            PeerSessionService peerSessionService
+    ) {
         this.authService = authService;
+        this.peerSessionService = peerSessionService;
     }
 
     public MessageEnvelope dispatch(MessageEnvelope request, String remoteIp) {
@@ -30,12 +39,7 @@ public final class TrackerRequestDispatcher {
             return switch (request.type()) {
                 case LOGIN_REQUEST -> handleLogin(request, remoteIp);
                 case LOGOUT_REQUEST -> handleLogout(request);
-                case HEARTBEAT -> MessageEnvelope.error(
-                        MessageType.HEARTBEAT_ACK,
-                        request.requestId(),
-                        "NOT_IMPLEMENTED_YET",
-                        "Heartbeat persistence is implemented in Week 3."
-                );
+                case HEARTBEAT -> handleHeartbeat(request);
                 default -> MessageEnvelope.error(
                         responseTypeFor(request.type()),
                         request.requestId(),
@@ -44,6 +48,13 @@ public final class TrackerRequestDispatcher {
                 );
             };
         } catch (AuthException e) {
+            return MessageEnvelope.error(
+                    responseTypeFor(request.type()),
+                    request.requestId(),
+                    e.errorCode(),
+                    e.getMessage()
+            );
+        } catch (SessionException e) {
             return MessageEnvelope.error(
                     responseTypeFor(request.type()),
                     request.requestId(),
@@ -89,6 +100,20 @@ public final class TrackerRequestDispatcher {
                 MessageType.LOGOUT_RESPONSE,
                 request.requestId(),
                 null
+        );
+    }
+
+    private MessageEnvelope handleHeartbeat(MessageEnvelope request) throws Exception {
+        HeartbeatRequest payload = ProtocolCodec.fromPayload(
+                request.payload(),
+                HeartbeatRequest.class
+        );
+        HeartbeatResponse response = peerSessionService.heartbeat(payload);
+
+        return MessageEnvelope.success(
+                MessageType.HEARTBEAT_ACK,
+                request.requestId(),
+                ProtocolCodec.toPayload(response)
         );
     }
 

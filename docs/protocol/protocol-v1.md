@@ -111,8 +111,37 @@ Do not reveal whether the username or password was the failing field.
 
 ## HEARTBEAT
 
-The message type is reserved in protocol v1. Persistence/update of `last_seen`
-and the automatic Online/Offline monitor are implemented in Week 3.
+Peer sends a heartbeat after login using the `sessionId` returned by
+`LOGIN_RESPONSE`.
+
+```json
+{
+  "version": 1,
+  "type": "HEARTBEAT",
+  "requestId": "52abe927-ef30-4057-a821-d5b92aec17ee",
+  "payload": {
+    "sessionId": "caf975e7-db6f-4a10-a08d-361be518fe78"
+  }
+}
+```
+
+The Tracker accepts heartbeat only for a session whose status is `ONLINE`,
+updates `peer_sessions.last_seen`, and replies:
+
+```json
+{
+  "version": 1,
+  "type": "HEARTBEAT_ACK",
+  "requestId": "52abe927-ef30-4057-a821-d5b92aec17ee",
+  "status": "SUCCESS",
+  "payload": {
+    "serverTimeEpochMillis": 1790208000000
+  }
+}
+```
+
+An invalid, expired or logged-out session receives an error response instead.
+The Online/Offline timeout monitor is implemented as the next Week 3 cluster.
 
 ## Extension rule for the team
 

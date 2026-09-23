@@ -14,7 +14,7 @@ public interface PeerSessionRepository {
 
     void closeActiveForPeer(UUID peerId, OffsetDateTime closedAt) throws SQLException;
 
-    void updateLastSeen(UUID sessionId, OffsetDateTime lastSeen) throws SQLException;
+    boolean updateLastSeen(UUID sessionId, OffsetDateTime lastSeen) throws SQLException;
 
     boolean markLoggedOut(UUID sessionId, OffsetDateTime logoutAt) throws SQLException;
 }

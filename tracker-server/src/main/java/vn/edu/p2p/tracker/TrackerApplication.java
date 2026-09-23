@@ -6,6 +6,7 @@ import vn.edu.p2p.tracker.config.DatabaseConnectionFactory;
 import vn.edu.p2p.tracker.config.TrackerSettings;
 import vn.edu.p2p.tracker.network.TrackerRequestDispatcher;
 import vn.edu.p2p.tracker.network.TrackerServer;
+import vn.edu.p2p.tracker.peer.PeerSessionService;
 import vn.edu.p2p.tracker.repository.PeerRepository;
 import vn.edu.p2p.tracker.repository.PeerSessionRepository;
 import vn.edu.p2p.tracker.repository.UserRepository;
@@ -36,9 +37,10 @@ public final class TrackerApplication {
                 new BCryptPasswordService(),
                 settings.heartbeatIntervalSeconds()
         );
+        PeerSessionService peerSessionService = new PeerSessionService(sessions);
 
         TrackerRequestDispatcher dispatcher =
-                new TrackerRequestDispatcher(authService);
+                new TrackerRequestDispatcher(authService, peerSessionService);
         TrackerServer server = new TrackerServer(
                 settings.trackerPort(),
                 dispatcher
@@ -49,11 +51,16 @@ public final class TrackerApplication {
         );
 
         System.out.println("==========================================");
-        System.out.println(" FileShare-P2P Tracker — Week 2          ");
+        System.out.println(" FileShare-P2P Tracker — Week 3          ");
         System.out.println("==========================================");
         System.out.printf("Tracker port : %d%n", settings.trackerPort());
         System.out.printf("DB URL       : %s%n", settings.database().url());
         System.out.printf("DB user      : %s%n", settings.database().username());
+        System.out.printf(
+                "Heartbeat     : every %ds, timeout %ds%n",
+                settings.heartbeatIntervalSeconds(),
+                settings.heartbeatTimeoutSeconds()
+        );
         System.out.println("DB check     : OK");
         System.out.println();
 
