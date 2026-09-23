@@ -115,6 +115,22 @@ public final class JdbcPeerSessionRepository implements PeerSessionRepository {
         }
     }
 
+
+    @Override
+    public int expireStaleSessions(OffsetDateTime staleBefore) throws SQLException {
+        String sql = """
+                UPDATE peer_sessions
+                SET status = 'EXPIRED'
+                WHERE status = 'ONLINE' AND last_seen < ?
+                """;
+
+        try (Connection connection = connectionFactory.open();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setObject(1, staleBefore);
+            return statement.executeUpdate();
+        }
+    }
+
     private static PeerSessionRecord map(ResultSet rs) throws SQLException {
         return new PeerSessionRecord(
                 rs.getObject("session_id", UUID.class),

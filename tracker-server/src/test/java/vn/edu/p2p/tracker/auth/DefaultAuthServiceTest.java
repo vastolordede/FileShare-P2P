@@ -178,5 +178,10 @@ class DefaultAuthServiceTest {
             lastStatus = "LOGGED_OUT";
             return true;
         }
+
+        @Override
+        public int expireStaleSessions(OffsetDateTime staleBefore) {
+            return 0;
+        }
     }
 }

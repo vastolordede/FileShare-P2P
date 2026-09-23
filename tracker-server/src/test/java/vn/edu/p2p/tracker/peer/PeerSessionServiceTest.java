@@ -141,5 +141,10 @@ class PeerSessionServiceTest {
         public boolean markLoggedOut(UUID sessionId, OffsetDateTime logoutAt) {
             return sessions.containsKey(sessionId);
         }
+
+        @Override
+        public int expireStaleSessions(OffsetDateTime staleBefore) {
+            return 0;
+        }
     }
 }

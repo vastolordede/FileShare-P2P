@@ -6,6 +6,7 @@ import vn.edu.p2p.tracker.config.DatabaseConnectionFactory;
 import vn.edu.p2p.tracker.config.TrackerSettings;
 import vn.edu.p2p.tracker.network.TrackerRequestDispatcher;
 import vn.edu.p2p.tracker.network.TrackerServer;
+import vn.edu.p2p.tracker.peer.HeartbeatMonitor;
 import vn.edu.p2p.tracker.peer.PeerSessionService;
 import vn.edu.p2p.tracker.repository.PeerRepository;
 import vn.edu.p2p.tracker.repository.PeerSessionRepository;
@@ -13,6 +14,8 @@ import vn.edu.p2p.tracker.repository.UserRepository;
 import vn.edu.p2p.tracker.repository.jdbc.JdbcPeerRepository;
 import vn.edu.p2p.tracker.repository.jdbc.JdbcPeerSessionRepository;
 import vn.edu.p2p.tracker.repository.jdbc.JdbcUserRepository;
+
+import java.time.Duration;
 
 public final class TrackerApplication {
     private TrackerApplication() {
@@ -46,8 +49,17 @@ public final class TrackerApplication {
                 dispatcher
         );
 
+        HeartbeatMonitor heartbeatMonitor = new HeartbeatMonitor(
+                sessions,
+                Duration.ofSeconds(settings.heartbeatTimeoutSeconds()),
+                Duration.ofSeconds(settings.heartbeatIntervalSeconds())
+        );
+
         Runtime.getRuntime().addShutdownHook(
-                new Thread(server::close, "tracker-shutdown")
+                new Thread(() -> {
+                    heartbeatMonitor.close();
+                    server.close();
+                }, "tracker-shutdown")
         );
 
         System.out.println("==========================================");
@@ -64,6 +76,7 @@ public final class TrackerApplication {
         System.out.println("DB check     : OK");
         System.out.println();
 
+        heartbeatMonitor.start();
         server.start();
     }
 }
