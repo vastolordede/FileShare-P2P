@@ -10,10 +10,14 @@ import vn.edu.p2p.tracker.peer.HeartbeatMonitor;
 import vn.edu.p2p.tracker.peer.PeerSessionService;
 import vn.edu.p2p.tracker.repository.PeerRepository;
 import vn.edu.p2p.tracker.repository.PeerSessionRepository;
+import vn.edu.p2p.tracker.repository.StatisticsRepository;
 import vn.edu.p2p.tracker.repository.UserRepository;
 import vn.edu.p2p.tracker.repository.jdbc.JdbcPeerRepository;
 import vn.edu.p2p.tracker.repository.jdbc.JdbcPeerSessionRepository;
+import vn.edu.p2p.tracker.repository.jdbc.JdbcStatisticsRepository;
 import vn.edu.p2p.tracker.repository.jdbc.JdbcUserRepository;
+import vn.edu.p2p.tracker.statistics.TrackerStatisticsMonitor;
+import vn.edu.p2p.tracker.statistics.TrackerStatisticsService;
 
 import java.time.Duration;
 
@@ -32,6 +36,8 @@ public final class TrackerApplication {
         PeerRepository peers = new JdbcPeerRepository(connectionFactory);
         PeerSessionRepository sessions =
                 new JdbcPeerSessionRepository(connectionFactory);
+        StatisticsRepository statistics =
+                new JdbcStatisticsRepository(connectionFactory);
 
         DefaultAuthService authService = new DefaultAuthService(
                 users,
@@ -54,16 +60,21 @@ public final class TrackerApplication {
                 Duration.ofSeconds(settings.heartbeatTimeoutSeconds()),
                 Duration.ofSeconds(settings.heartbeatIntervalSeconds())
         );
+        TrackerStatisticsMonitor statisticsMonitor = new TrackerStatisticsMonitor(
+                new TrackerStatisticsService(statistics),
+                Duration.ofSeconds(settings.statisticsIntervalSeconds())
+        );
 
         Runtime.getRuntime().addShutdownHook(
                 new Thread(() -> {
+                    statisticsMonitor.close();
                     heartbeatMonitor.close();
                     server.close();
                 }, "tracker-shutdown")
         );
 
         System.out.println("==========================================");
-        System.out.println(" FileShare-P2P Tracker — Week 3          ");
+        System.out.println(" FileShare-P2P Tracker — Week 4          ");
         System.out.println("==========================================");
         System.out.printf("Tracker port : %d%n", settings.trackerPort());
         System.out.printf("DB URL       : %s%n", settings.database().url());
@@ -73,10 +84,15 @@ public final class TrackerApplication {
                 settings.heartbeatIntervalSeconds(),
                 settings.heartbeatTimeoutSeconds()
         );
+        System.out.printf(
+                "Statistics    : every %ds%n",
+                settings.statisticsIntervalSeconds()
+        );
         System.out.println("DB check     : OK");
         System.out.println();
 
         heartbeatMonitor.start();
+        statisticsMonitor.start();
         server.start();
     }
 }
