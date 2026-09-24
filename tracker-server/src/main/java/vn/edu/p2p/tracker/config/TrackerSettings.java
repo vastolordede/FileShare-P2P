@@ -4,24 +4,24 @@ import vn.edu.p2p.common.config.LocalEnv;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.Path;
 import java.util.Properties;
 
 /**
- * Loads Tracker settings using the following priority:
+ * Tracker configuration priority:
  *
- * 1. Operating-system environment variables
- * 2. Local .env file
+ * 1. OS environment variables
+ * 2. project .env
  * 3. classpath application.properties
- * 4. safe/default development values
- *
- * .env and application.properties are local-only files and must not be committed.
+ * 4. built-in defaults
  */
 public record TrackerSettings(
         DatabaseConfig database,
         int trackerPort,
         int heartbeatIntervalSeconds,
         int heartbeatTimeoutSeconds,
-        int statisticsIntervalSeconds
+        int statisticsIntervalSeconds,
+        TlsConfig tls
 ) {
     public static TrackerSettings load() {
         Properties properties = new Properties();
@@ -39,10 +39,7 @@ public record TrackerSettings(
         LocalEnv dotenv = LocalEnv.load();
 
         String explicitDbUrl = optionalValue(
-                "DB_URL",
-                dotenv,
-                properties,
-                "db.url"
+                "DB_URL", dotenv, properties, "db.url"
         );
 
         String dbUrl;
@@ -66,11 +63,7 @@ public record TrackerSettings(
         );
 
         String dbPassword = value(
-                "DB_PASSWORD",
-                dotenv,
-                properties,
-                "db.password",
-                ""
+                "DB_PASSWORD", dotenv, properties, "db.password", ""
         );
 
         if (dbPassword.isBlank()) {
@@ -81,11 +74,7 @@ public record TrackerSettings(
         }
 
         int trackerPort = intValue(
-                "TRACKER_PORT",
-                dotenv,
-                properties,
-                "tracker.port",
-                9000
+                "TRACKER_PORT", dotenv, properties, "tracker.port", 9000
         );
         int heartbeatInterval = intValue(
                 "HEARTBEAT_INTERVAL_SECONDS",
@@ -109,6 +98,40 @@ public record TrackerSettings(
                 30
         );
 
+        boolean tlsEnabled = booleanValue(
+                "TRACKER_TLS_ENABLED",
+                dotenv,
+                properties,
+                "tracker.tls.enabled",
+                false
+        );
+
+        Path keyStorePath = dotenv.resolvePath(
+                value(
+                        "TRACKER_TLS_KEYSTORE",
+                        dotenv,
+                        properties,
+                        "tracker.tls.keystore.path",
+                        "certs/tracker-server.p12"
+                )
+        );
+
+        String keyStorePassword = value(
+                "TRACKER_TLS_KEYSTORE_PASSWORD",
+                dotenv,
+                properties,
+                "tracker.tls.keystore.password",
+                ""
+        );
+
+        String keyStoreType = value(
+                "TRACKER_TLS_KEYSTORE_TYPE",
+                dotenv,
+                properties,
+                "tracker.tls.keystore.type",
+                "PKCS12"
+        );
+
         if (heartbeatTimeout <= heartbeatInterval) {
             throw new IllegalStateException(
                     "heartbeat.timeout.seconds must be greater than heartbeat.interval.seconds"
@@ -126,7 +149,13 @@ public record TrackerSettings(
                 trackerPort,
                 heartbeatInterval,
                 heartbeatTimeout,
-                statisticsInterval
+                statisticsInterval,
+                new TlsConfig(
+                        tlsEnabled,
+                        keyStorePath,
+                        keyStorePassword,
+                        keyStoreType
+                )
         );
     }
 
@@ -181,6 +210,34 @@ public record TrackerSettings(
                     e
             );
         }
+    }
+
+    private static boolean booleanValue(
+            String envKey,
+            LocalEnv dotenv,
+            Properties properties,
+            String propertyKey,
+            boolean defaultValue
+    ) {
+        String raw = value(
+                envKey,
+                dotenv,
+                properties,
+                propertyKey,
+                Boolean.toString(defaultValue)
+        );
+
+        if ("true".equalsIgnoreCase(raw)) {
+            return true;
+        }
+
+        if ("false".equalsIgnoreCase(raw)) {
+            return false;
+        }
+
+        throw new IllegalStateException(
+                "Invalid boolean for " + envKey + "/" + propertyKey + ": " + raw
+        );
     }
 
     private static String env(String key) {

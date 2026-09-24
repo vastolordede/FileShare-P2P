@@ -14,7 +14,8 @@ import java.util.Map;
  * Priority is handled by callers:
  * System environment > .env > application.properties > defaults.
  *
- * No external dependency is required.
+ * Relative filesystem paths should be resolved with resolvePath(...),
+ * which anchors them to the directory containing .env when available.
  */
 public final class LocalEnv {
     private final Map<String, String> values;
@@ -32,9 +33,15 @@ public final class LocalEnv {
         }
 
         try {
-            return new LocalEnv(parse(Files.readAllLines(envFile, StandardCharsets.UTF_8)), envFile);
+            return new LocalEnv(
+                    parse(Files.readAllLines(envFile, StandardCharsets.UTF_8)),
+                    envFile.toAbsolutePath().normalize()
+            );
         } catch (IOException e) {
-            throw new IllegalStateException("Cannot read .env file: " + envFile.toAbsolutePath(), e);
+            throw new IllegalStateException(
+                    "Cannot read .env file: " + envFile.toAbsolutePath(),
+                    e
+            );
         }
     }
 
@@ -44,6 +51,33 @@ public final class LocalEnv {
 
     public Path source() {
         return source;
+    }
+
+    /**
+     * Resolve a path from configuration.
+     *
+     * - Absolute paths are returned normalized.
+     * - Relative paths are resolved from the folder containing .env.
+     * - If no .env is present, the project root (settings.gradle) is used when found.
+     * - Final fallback is the current working directory.
+     */
+    public Path resolvePath(String rawPath) {
+        Path raw = Path.of(rawPath.trim());
+
+        if (raw.isAbsolute()) {
+            return raw.normalize();
+        }
+
+        if (source != null && source.getParent() != null) {
+            return source.getParent().resolve(raw).normalize();
+        }
+
+        Path projectRoot = findProjectRoot();
+        if (projectRoot != null) {
+            return projectRoot.resolve(raw).normalize();
+        }
+
+        return raw.toAbsolutePath().normalize();
     }
 
     private static Path findEnvFile() {
@@ -70,6 +104,21 @@ public final class LocalEnv {
                 return normalized;
             }
         }
+
+        return null;
+    }
+
+    private static Path findProjectRoot() {
+        Path current = Path.of("").toAbsolutePath().normalize();
+
+        while (current != null) {
+            if (Files.isRegularFile(current.resolve("settings.gradle"))
+                    || Files.isRegularFile(current.resolve("settings.gradle.kts"))) {
+                return current;
+            }
+            current = current.getParent();
+        }
+
         return null;
     }
 
@@ -78,6 +127,7 @@ public final class LocalEnv {
 
         for (String rawLine : lines) {
             String line = rawLine.trim();
+
             if (line.isEmpty() || line.startsWith("#")) {
                 continue;
             }
@@ -97,7 +147,9 @@ public final class LocalEnv {
             if (value.length() >= 2) {
                 char first = value.charAt(0);
                 char last = value.charAt(value.length() - 1);
-                if ((first == '"' && last == '"') || (first == '\'' && last == '\'')) {
+
+                if ((first == '"' && last == '"')
+                        || (first == '\'' && last == '\'')) {
                     value = value.substring(1, value.length() - 1);
                 }
             }

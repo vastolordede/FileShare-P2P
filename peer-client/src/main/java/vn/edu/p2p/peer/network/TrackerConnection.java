@@ -43,6 +43,14 @@ public final class TrackerConnection implements AutoCloseable {
             return;
         }
 
+        if (config.tlsEnabled()) {
+            socket = new TlsTrackerSocketFactory(config).connect(
+                    CONNECT_TIMEOUT_MILLIS,
+                    READ_TIMEOUT_MILLIS
+            );
+            return;
+        }
+
         Socket candidate = new Socket();
         candidate.connect(
                 new InetSocketAddress(config.host(), config.port()),
