@@ -68,7 +68,7 @@ public final class JdbcPeerSessionRepository implements PeerSessionRepository {
     }
 
     @Override
-    public void closeActiveForPeer(UUID peerId, OffsetDateTime closedAt) throws SQLException {
+    public int closeActiveForPeer(UUID peerId, OffsetDateTime closedAt) throws SQLException {
         String sql = """
                 UPDATE peer_sessions
                 SET status = 'LOGGED_OUT', logout_at = ?
@@ -79,7 +79,7 @@ public final class JdbcPeerSessionRepository implements PeerSessionRepository {
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setObject(1, closedAt);
             statement.setObject(2, peerId);
-            statement.executeUpdate();
+            return statement.executeUpdate();
         }
     }
 

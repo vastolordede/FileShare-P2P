@@ -231,7 +231,7 @@ public final class LoginController {
             heartbeatCoordinator.close();
         }
         if (authClientService != null) {
-            authClientService.close();
+            authClientService.closeGracefully();
         }
         ioExecutor.shutdownNow();
     }
