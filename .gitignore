@@ -37,3 +37,6 @@ tmp/
 
 **/bin/
 work/
+
+.env
+**/.env
