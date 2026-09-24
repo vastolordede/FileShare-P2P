@@ -114,7 +114,8 @@ class PeerSessionServiceTest {
         }
 
         @Override
-        public void closeActiveForPeer(UUID peerId, OffsetDateTime closedAt) {
+        public int closeActiveForPeer(UUID peerId, OffsetDateTime closedAt) {
+            return 0;
         }
 
         @Override

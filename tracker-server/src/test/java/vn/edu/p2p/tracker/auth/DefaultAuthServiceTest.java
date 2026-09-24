@@ -20,6 +20,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -61,6 +62,46 @@ class DefaultAuthServiceTest {
 
         service.logout(new LogoutRequest(response.sessionId()));
         assertEquals("LOGGED_OUT", sessions.lastStatus);
+    }
+
+    @Test
+    void shouldReplacePreviousOnlineSessionWhenSamePeerReconnects() throws Exception {
+        FakeUserRepository users = new FakeUserRepository();
+        FakePeerRepository peers = new FakePeerRepository();
+        FakeSessionRepository sessions = new FakeSessionRepository();
+        PasswordService passwords = new BCryptPasswordService(4);
+
+        users.user = new UserRecord(
+                1L,
+                "dang",
+                passwords.hash("secret"),
+                AccountStatus.ACTIVE,
+                OffsetDateTime.now()
+        );
+
+        DefaultAuthService service = new DefaultAuthService(
+                users,
+                peers,
+                sessions,
+                passwords,
+                10
+        );
+
+        String peerId = UUID.randomUUID().toString();
+        LoginRequest request = new LoginRequest(
+                "dang",
+                "secret",
+                7001,
+                peerId,
+                "TEST-PC"
+        );
+
+        LoginResponse first = service.login(request, "127.0.0.1");
+        LoginResponse second = service.login(request, "127.0.0.1");
+
+        assertNotEquals(first.sessionId(), second.sessionId());
+        assertEquals(1, sessions.closedSessions);
+        assertEquals(1, sessions.onlineSessionCount());
     }
 
     @Test
@@ -149,6 +190,7 @@ class DefaultAuthServiceTest {
     private static final class FakeSessionRepository implements PeerSessionRepository {
         final Map<UUID, PeerSessionRecord> sessions = new HashMap<>();
         String lastStatus;
+        int closedSessions;
 
         @Override
         public void create(PeerSessionRecord session) {
@@ -161,8 +203,27 @@ class DefaultAuthServiceTest {
         }
 
         @Override
-        public void closeActiveForPeer(UUID peerId, OffsetDateTime closedAt) {
-            // no-op for this unit test
+        public int closeActiveForPeer(UUID peerId, OffsetDateTime closedAt) {
+            int changed = 0;
+            for (Map.Entry<UUID, PeerSessionRecord> entry : sessions.entrySet()) {
+                PeerSessionRecord current = entry.getValue();
+                if (current.peerId().equals(peerId)
+                        && current.status() == vn.edu.p2p.tracker.domain.PeerStatus.ONLINE) {
+                    entry.setValue(new PeerSessionRecord(
+                            current.sessionId(),
+                            current.peerId(),
+                            current.ipAddress(),
+                            current.listeningPort(),
+                            vn.edu.p2p.tracker.domain.PeerStatus.LOGGED_OUT,
+                            current.loginAt(),
+                            current.lastSeen(),
+                            closedAt
+                    ));
+                    changed++;
+                }
+            }
+            closedSessions += changed;
+            return changed;
         }
 
         @Override
@@ -172,11 +233,31 @@ class DefaultAuthServiceTest {
 
         @Override
         public boolean markLoggedOut(UUID sessionId, OffsetDateTime logoutAt) {
-            if (!sessions.containsKey(sessionId)) {
+            PeerSessionRecord current = sessions.get(sessionId);
+            if (current == null
+                    || current.status() != vn.edu.p2p.tracker.domain.PeerStatus.ONLINE) {
                 return false;
             }
+            sessions.put(sessionId, new PeerSessionRecord(
+                    current.sessionId(),
+                    current.peerId(),
+                    current.ipAddress(),
+                    current.listeningPort(),
+                    vn.edu.p2p.tracker.domain.PeerStatus.LOGGED_OUT,
+                    current.loginAt(),
+                    current.lastSeen(),
+                    logoutAt
+            ));
             lastStatus = "LOGGED_OUT";
             return true;
+        }
+
+        int onlineSessionCount() {
+            return (int) sessions.values().stream()
+                    .filter(session ->
+                            session.status()
+                                    == vn.edu.p2p.tracker.domain.PeerStatus.ONLINE)
+                    .count();
         }
 
         @Override

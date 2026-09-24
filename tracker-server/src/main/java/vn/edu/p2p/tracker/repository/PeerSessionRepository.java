@@ -12,7 +12,7 @@ public interface PeerSessionRepository {
 
     Optional<PeerSessionRecord> findBySessionId(UUID sessionId) throws SQLException;
 
-    void closeActiveForPeer(UUID peerId, OffsetDateTime closedAt) throws SQLException;
+    int closeActiveForPeer(UUID peerId, OffsetDateTime closedAt) throws SQLException;
 
     boolean updateLastSeen(UUID sessionId, OffsetDateTime lastSeen) throws SQLException;
 

@@ -180,6 +180,25 @@ public final class AuthClientService implements AutoCloseable {
         }
     }
 
+    /**
+     * Best-effort graceful shutdown used when the JavaFX application exits.
+     * A network failure must never prevent the local process from closing.
+     */
+    public synchronized void closeGracefully() {
+        try {
+            if (currentSession != null) {
+                logout();
+            }
+        } catch (AuthClientException e) {
+            System.err.println(
+                    "Cannot notify Tracker about logout during shutdown: "
+                            + e.getMessage()
+            );
+        } finally {
+            close();
+        }
+    }
+
     @Override
     public synchronized void close() {
         connection.close();

@@ -79,7 +79,14 @@ public final class DefaultAuthService implements AuthService {
                 ));
             }
 
-            sessionRepository.closeActiveForPeer(peerId, now);
+            int replacedSessions = sessionRepository.closeActiveForPeer(peerId, now);
+            if (replacedSessions > 0) {
+                System.out.printf(
+                        "Peer %s reconnect: replaced %d previous ONLINE session(s).%n",
+                        peerId,
+                        replacedSessions
+                );
+            }
 
             UUID sessionId = UUID.randomUUID();
             sessionRepository.create(new PeerSessionRecord(
