@@ -5,6 +5,8 @@ import vn.edu.p2p.tracker.auth.DefaultAuthService;
 import vn.edu.p2p.tracker.config.DatabaseConnectionFactory;
 import vn.edu.p2p.tracker.config.TrackerSettings;
 import vn.edu.p2p.tracker.network.TrackerRequestDispatcher;
+import vn.edu.p2p.tracker.network.TrackerServerSocketProvider;
+import vn.edu.p2p.tracker.network.TlsTrackerServerSocketProvider;
 import vn.edu.p2p.tracker.network.TrackerServer;
 import vn.edu.p2p.tracker.peer.HeartbeatMonitor;
 import vn.edu.p2p.tracker.peer.PeerSessionService;
@@ -50,9 +52,18 @@ public final class TrackerApplication {
 
         TrackerRequestDispatcher dispatcher =
                 new TrackerRequestDispatcher(authService, peerSessionService);
+
+        TrackerServerSocketProvider socketProvider =
+                settings.tls().enabled()
+                        ? new TlsTrackerServerSocketProvider(settings.tls())
+                        : TrackerServerSocketProvider.plain();
+
         TrackerServer server = new TrackerServer(
                 settings.trackerPort(),
-                dispatcher
+                dispatcher,
+                TrackerServer.DEFAULT_WORKER_THREADS,
+                socketProvider,
+                settings.tls().enabled() ? "TLS" : "TCP"
         );
 
         HeartbeatMonitor heartbeatMonitor = new HeartbeatMonitor(
@@ -87,6 +98,10 @@ public final class TrackerApplication {
         System.out.printf(
                 "Statistics    : every %ds%n",
                 settings.statisticsIntervalSeconds()
+        );
+        System.out.printf(
+                "Transport     : %s%n",
+                settings.tls().enabled() ? "TLS" : "TCP (development fallback)"
         );
         System.out.println("DB check     : OK");
         System.out.println();

@@ -16,19 +16,43 @@ public final class TrackerServer implements AutoCloseable {
     private final int port;
     private final TrackerRequestDispatcher dispatcher;
     private final int workerThreads;
+    private final TrackerServerSocketProvider socketProvider;
+    private final String transportName;
     private final ExecutorService clientPool;
     private final AtomicBoolean running = new AtomicBoolean(false);
 
     private volatile ServerSocket serverSocket;
 
     public TrackerServer(int port, TrackerRequestDispatcher dispatcher) {
-        this(port, dispatcher, DEFAULT_WORKER_THREADS);
+        this(
+                port,
+                dispatcher,
+                DEFAULT_WORKER_THREADS,
+                TrackerServerSocketProvider.plain(),
+                "TCP"
+        );
     }
 
     public TrackerServer(
             int port,
             TrackerRequestDispatcher dispatcher,
             int workerThreads
+    ) {
+        this(
+                port,
+                dispatcher,
+                workerThreads,
+                TrackerServerSocketProvider.plain(),
+                "TCP"
+        );
+    }
+
+    public TrackerServer(
+            int port,
+            TrackerRequestDispatcher dispatcher,
+            int workerThreads,
+            TrackerServerSocketProvider socketProvider,
+            String transportName
     ) {
         if (port < 1 || port > 65535) {
             throw new IllegalArgumentException("Invalid TCP port: " + port);
@@ -39,6 +63,10 @@ public final class TrackerServer implements AutoCloseable {
         this.port = port;
         this.dispatcher = dispatcher;
         this.workerThreads = workerThreads;
+        this.socketProvider = java.util.Objects.requireNonNull(socketProvider);
+        this.transportName = transportName == null || transportName.isBlank()
+                ? "TCP"
+                : transportName;
         this.clientPool = Executors.newFixedThreadPool(
                 workerThreads,
                 new TrackerThreadFactory()
@@ -54,10 +82,11 @@ public final class TrackerServer implements AutoCloseable {
             throw new IllegalStateException("TrackerServer is already running");
         }
 
-        try (ServerSocket server = new ServerSocket(port)) {
+        try (ServerSocket server = socketProvider.open(port)) {
             serverSocket = server;
             System.out.printf(
-                    "Tracker TCP server listening on 0.0.0.0:%d with %d workers%n",
+                    "Tracker %s server listening on 0.0.0.0:%d with %d workers%n",
+                    transportName,
                     port,
                     workerThreads
             );
