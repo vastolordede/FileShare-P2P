@@ -14,6 +14,22 @@ public interface PeerSessionRepository {
 
     int closeActiveForPeer(UUID peerId, OffsetDateTime closedAt) throws SQLException;
 
+    /**
+     * Replace the current ONLINE session for a Peer with a new session.
+     *
+     * JDBC implementations should override this method and perform the close + insert
+     * in one transaction while serializing on the Peer row. The default implementation
+     * keeps lightweight/in-memory test repositories source-compatible.
+     */
+    default int replaceActiveForPeer(
+            PeerSessionRecord newSession,
+            OffsetDateTime closedAt
+    ) throws SQLException {
+        int replaced = closeActiveForPeer(newSession.peerId(), closedAt);
+        create(newSession);
+        return replaced;
+    }
+
     boolean updateLastSeen(UUID sessionId, OffsetDateTime lastSeen) throws SQLException;
 
     boolean markLoggedOut(UUID sessionId, OffsetDateTime logoutAt) throws SQLException;

@@ -18,6 +18,11 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -105,6 +110,45 @@ class DefaultAuthServiceTest {
     }
 
     @Test
+    void concurrentReconnectsShouldLeaveSingleOnlineSession() throws Exception {
+        FakeUserRepository users = new FakeUserRepository();
+        ConcurrentPeerRepository peers = new ConcurrentPeerRepository();
+        ConcurrentSessionRepository sessions = new ConcurrentSessionRepository();
+        PasswordService passwords = new BCryptPasswordService(4);
+
+        users.user = new UserRecord(
+                1L,
+                "dang",
+                passwords.hash("secret"),
+                AccountStatus.ACTIVE,
+                OffsetDateTime.now()
+        );
+
+        DefaultAuthService service = new DefaultAuthService(
+                users, peers, sessions, passwords, 10
+        );
+        String peerId = UUID.randomUUID().toString();
+        LoginRequest request = new LoginRequest(
+                "dang", "secret", 7001, peerId, "TEST-PC"
+        );
+
+        ExecutorService executor = Executors.newFixedThreadPool(8);
+        try {
+            var futures = IntStream.range(0, 12)
+                    .mapToObj(i -> executor.submit(
+                            () -> service.login(request, "127.0.0.1")
+                    ))
+                    .toList();
+            for (Future<LoginResponse> future : futures) {
+                assertNotNull(future.get().sessionId());
+            }
+            assertEquals(1, sessions.onlineSessionCount());
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
     void shouldRejectWrongPassword() {
         FakeUserRepository users = new FakeUserRepository();
         FakePeerRepository peers = new FakePeerRepository();
@@ -184,6 +228,101 @@ class DefaultAuthServiceTest {
                     old.createdAt(),
                     lastLoginAt
             ));
+        }
+    }
+
+    private static final class ConcurrentPeerRepository implements PeerRepository {
+        private final ConcurrentHashMap<UUID, PeerRecord> peers =
+                new ConcurrentHashMap<>();
+
+        @Override
+        public Optional<PeerRecord> findById(UUID peerId) {
+            return Optional.ofNullable(peers.get(peerId));
+        }
+
+        @Override
+        public void create(PeerRecord peer) throws SQLException {
+            PeerRecord previous = peers.putIfAbsent(peer.peerId(), peer);
+            if (previous != null) {
+                SQLException duplicate = new SQLException("duplicate peer", "23505");
+                throw duplicate;
+            }
+        }
+
+        @Override
+        public void updateLastLogin(UUID peerId, OffsetDateTime lastLoginAt) {
+            peers.computeIfPresent(peerId, (id, old) -> new PeerRecord(
+                    old.peerId(), old.userId(), old.deviceName(),
+                    old.createdAt(), lastLoginAt
+            ));
+        }
+    }
+
+    private static final class ConcurrentSessionRepository
+            implements PeerSessionRepository {
+        private final Map<UUID, PeerSessionRecord> sessions = new HashMap<>();
+
+        @Override
+        public synchronized void create(PeerSessionRecord session) {
+            sessions.put(session.sessionId(), session);
+        }
+
+        @Override
+        public synchronized Optional<PeerSessionRecord> findBySessionId(UUID sessionId) {
+            return Optional.ofNullable(sessions.get(sessionId));
+        }
+
+        @Override
+        public synchronized int closeActiveForPeer(UUID peerId, OffsetDateTime closedAt) {
+            return close(peerId, closedAt);
+        }
+
+        @Override
+        public synchronized int replaceActiveForPeer(
+                PeerSessionRecord newSession,
+                OffsetDateTime closedAt
+        ) {
+            int replaced = close(newSession.peerId(), closedAt);
+            sessions.put(newSession.sessionId(), newSession);
+            return replaced;
+        }
+
+        private int close(UUID peerId, OffsetDateTime closedAt) {
+            int changed = 0;
+            for (Map.Entry<UUID, PeerSessionRecord> entry : sessions.entrySet()) {
+                PeerSessionRecord current = entry.getValue();
+                if (current.peerId().equals(peerId)
+                        && current.status() == vn.edu.p2p.tracker.domain.PeerStatus.ONLINE) {
+                    entry.setValue(new PeerSessionRecord(
+                            current.sessionId(), current.peerId(), current.ipAddress(),
+                            current.listeningPort(),
+                            vn.edu.p2p.tracker.domain.PeerStatus.LOGGED_OUT,
+                            current.loginAt(), current.lastSeen(), closedAt
+                    ));
+                    changed++;
+                }
+            }
+            return changed;
+        }
+
+        @Override
+        public synchronized boolean updateLastSeen(UUID sessionId, OffsetDateTime lastSeen) {
+            return sessions.containsKey(sessionId);
+        }
+
+        @Override
+        public synchronized boolean markLoggedOut(UUID sessionId, OffsetDateTime logoutAt) {
+            return sessions.containsKey(sessionId);
+        }
+
+        @Override
+        public int expireStaleSessions(OffsetDateTime staleBefore) { return 0; }
+
+        synchronized int onlineSessionCount() {
+            return (int) sessions.values().stream()
+                    .filter(session -> session.status()
+                            == vn.edu.p2p.tracker.domain.PeerStatus.ONLINE)
+                    .count();
         }
     }
 

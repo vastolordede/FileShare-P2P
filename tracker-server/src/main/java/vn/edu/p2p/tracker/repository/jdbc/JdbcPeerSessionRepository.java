@@ -84,6 +84,70 @@ public final class JdbcPeerSessionRepository implements PeerSessionRepository {
     }
 
     @Override
+    public int replaceActiveForPeer(
+            PeerSessionRecord newSession,
+            OffsetDateTime closedAt
+    ) throws SQLException {
+        String lockPeerSql = "SELECT peer_id FROM peers WHERE peer_id = ? FOR UPDATE";
+        String closeSql = """
+                UPDATE peer_sessions
+                SET status = 'LOGGED_OUT', logout_at = ?
+                WHERE peer_id = ? AND status = 'ONLINE'
+                """;
+        String insertSql = """
+                INSERT INTO peer_sessions(
+                    session_id, peer_id, ip_address, listening_port,
+                    status, login_at, last_seen, logout_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """;
+
+        try (Connection connection = connectionFactory.open()) {
+            boolean previousAutoCommit = connection.getAutoCommit();
+            connection.setAutoCommit(false);
+
+            try {
+                try (PreparedStatement lock = connection.prepareStatement(lockPeerSql)) {
+                    lock.setObject(1, newSession.peerId());
+                    try (ResultSet rs = lock.executeQuery()) {
+                        if (!rs.next()) {
+                            throw new SQLException(
+                                    "Peer does not exist: " + newSession.peerId()
+                            );
+                        }
+                    }
+                }
+
+                int replaced;
+                try (PreparedStatement close = connection.prepareStatement(closeSql)) {
+                    close.setObject(1, closedAt);
+                    close.setObject(2, newSession.peerId());
+                    replaced = close.executeUpdate();
+                }
+
+                try (PreparedStatement insert = connection.prepareStatement(insertSql)) {
+                    insert.setObject(1, newSession.sessionId());
+                    insert.setObject(2, newSession.peerId());
+                    insert.setString(3, newSession.ipAddress());
+                    insert.setInt(4, newSession.listeningPort());
+                    insert.setString(5, newSession.status().name());
+                    insert.setObject(6, newSession.loginAt());
+                    insert.setObject(7, newSession.lastSeen());
+                    insert.setObject(8, newSession.logoutAt());
+                    insert.executeUpdate();
+                }
+
+                connection.commit();
+                return replaced;
+            } catch (SQLException e) {
+                connection.rollback();
+                throw e;
+            } finally {
+                connection.setAutoCommit(previousAutoCommit);
+            }
+        }
+    }
+
+    @Override
     public boolean updateLastSeen(UUID sessionId, OffsetDateTime lastSeen) throws SQLException {
         String sql = """
                 UPDATE peer_sessions
