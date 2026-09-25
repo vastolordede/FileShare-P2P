@@ -24,6 +24,7 @@ public record TrackerSettings(
         int workerThreads,
         int workerQueueCapacity,
         int socketReadTimeoutMillis,
+        String logLevel,
         TlsConfig tls
 ) {
     public static TrackerSettings load() {
@@ -121,6 +122,13 @@ public record TrackerSettings(
                 "tracker.socket.read.timeout.millis",
                 30_000
         );
+        String logLevel = value(
+                "TRACKER_LOG_LEVEL",
+                dotenv,
+                properties,
+                "tracker.log.level",
+                "INFO"
+        );
 
         boolean tlsEnabled = booleanValue(
                 "TRACKER_TLS_ENABLED",
@@ -181,6 +189,7 @@ public record TrackerSettings(
                 workerThreads,
                 workerQueueCapacity,
                 socketReadTimeoutMillis,
+                logLevel,
                 new TlsConfig(
                         tlsEnabled,
                         keyStorePath,

@@ -12,8 +12,11 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.logging.Logger;
 
 public final class TrackerServer implements AutoCloseable {
+    private static final Logger LOG = Logger.getLogger(TrackerServer.class.getName());
+
     public static final int DEFAULT_WORKER_THREADS = 16;
     public static final int DEFAULT_QUEUE_CAPACITY = 128;
     public static final int DEFAULT_READ_TIMEOUT_MILLIS = 30_000;
@@ -137,14 +140,14 @@ public final class TrackerServer implements AutoCloseable {
 
         try (ServerSocket server = socketProvider.open(port)) {
             serverSocket = server;
-            System.out.printf(
-                    "Tracker %s server listening on 0.0.0.0:%d with %d workers, queue=%d, readTimeout=%dms%n",
+            LOG.info(() -> String.format(
+                    "Tracker %s server listening on 0.0.0.0:%d with %d workers, queue=%d, readTimeout=%dms",
                     transportName,
                     port,
                     workerThreads,
                     queueCapacity,
                     readTimeoutMillis
-            );
+            ));
 
             while (running.get()) {
                 try {
@@ -168,10 +171,10 @@ public final class TrackerServer implements AutoCloseable {
                     new ClientHandler(client, dispatcher, readTimeoutMillis)
             );
         } catch (RejectedExecutionException e) {
-            System.err.printf(
-                    "Tracker overloaded; rejecting connection from %s.%n",
+            LOG.warning(() -> String.format(
+                    "Tracker overloaded; rejecting connection from %s",
                     client.getRemoteSocketAddress()
-            );
+            ));
             try {
                 client.close();
             } catch (IOException ignored) {

@@ -12,8 +12,12 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public final class HeartbeatMonitor implements AutoCloseable {
+    private static final Logger LOG = Logger.getLogger(HeartbeatMonitor.class.getName());
+
     private final PeerSessionRepository sessionRepository;
     private final Duration timeout;
     private final Duration scanInterval;
@@ -75,19 +79,15 @@ public final class HeartbeatMonitor implements AutoCloseable {
         try {
             int expired = scanOnce();
             if (expired > 0) {
-                System.out.printf(
-                        "Heartbeat monitor expired %d stale Peer session(s).%n",
+                LOG.info(() -> String.format(
+                        "Heartbeat monitor expired %d stale Peer session(s)",
                         expired
-                );
+                ));
             }
         } catch (SQLException e) {
-            System.err.println(
-                    "Heartbeat monitor database error: " + e.getMessage()
-            );
+            LOG.log(Level.WARNING, "Heartbeat monitor database error", e);
         } catch (RuntimeException e) {
-            System.err.println(
-                    "Heartbeat monitor error: " + e.getMessage()
-            );
+            LOG.log(Level.WARNING, "Heartbeat monitor error", e);
         }
     }
 

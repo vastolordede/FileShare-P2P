@@ -16,8 +16,11 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.logging.Logger;
 
 public final class DefaultAuthService implements AuthService {
+    private static final Logger LOG = Logger.getLogger(DefaultAuthService.class.getName());
+
     private final UserRepository userRepository;
     private final PeerRepository peerRepository;
     private final PeerSessionRepository sessionRepository;
@@ -84,11 +87,11 @@ public final class DefaultAuthService implements AuthService {
                     now
             );
             if (replacedSessions > 0) {
-                System.out.printf(
-                        "Peer %s reconnect: replaced %d previous ONLINE session(s).%n",
+                LOG.info(() -> String.format(
+                        "Peer %s reconnect: replaced %d previous ONLINE session(s)",
                         peerId,
                         replacedSessions
-                );
+                ));
             }
 
             return new LoginResponse(
