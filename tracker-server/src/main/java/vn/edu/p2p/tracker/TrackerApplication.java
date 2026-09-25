@@ -10,14 +10,17 @@ import vn.edu.p2p.tracker.network.TlsTrackerServerSocketProvider;
 import vn.edu.p2p.tracker.network.TrackerServer;
 import vn.edu.p2p.tracker.peer.HeartbeatMonitor;
 import vn.edu.p2p.tracker.peer.PeerSessionService;
+import vn.edu.p2p.tracker.repository.FileSourceRepository;
 import vn.edu.p2p.tracker.repository.PeerRepository;
 import vn.edu.p2p.tracker.repository.PeerSessionRepository;
 import vn.edu.p2p.tracker.repository.StatisticsRepository;
 import vn.edu.p2p.tracker.repository.UserRepository;
+import vn.edu.p2p.tracker.repository.jdbc.JdbcFileSourceRepository;
 import vn.edu.p2p.tracker.repository.jdbc.JdbcPeerRepository;
 import vn.edu.p2p.tracker.repository.jdbc.JdbcPeerSessionRepository;
 import vn.edu.p2p.tracker.repository.jdbc.JdbcStatisticsRepository;
 import vn.edu.p2p.tracker.repository.jdbc.JdbcUserRepository;
+import vn.edu.p2p.tracker.source.FileSourceService;
 import vn.edu.p2p.tracker.statistics.TrackerStatisticsMonitor;
 import vn.edu.p2p.tracker.statistics.TrackerStatisticsService;
 
@@ -40,6 +43,8 @@ public final class TrackerApplication {
                 new JdbcPeerSessionRepository(connectionFactory);
         StatisticsRepository statistics =
                 new JdbcStatisticsRepository(connectionFactory);
+        FileSourceRepository fileSources =
+                new JdbcFileSourceRepository(connectionFactory);
 
         DefaultAuthService authService = new DefaultAuthService(
                 users,
@@ -50,8 +55,17 @@ public final class TrackerApplication {
         );
         PeerSessionService peerSessionService = new PeerSessionService(sessions);
 
+        FileSourceService fileSourceService = new FileSourceService(
+                fileSources,
+                peerSessionService
+        );
+
         TrackerRequestDispatcher dispatcher =
-                new TrackerRequestDispatcher(authService, peerSessionService);
+                new TrackerRequestDispatcher(
+                        authService,
+                        peerSessionService,
+                        fileSourceService
+                );
 
         TrackerServerSocketProvider socketProvider =
                 settings.tls().enabled()

@@ -44,6 +44,8 @@ final class TrackerErrorResponses {
             case LOGIN_REQUEST, LOGIN_RESPONSE -> MessageType.LOGIN_RESPONSE;
             case LOGOUT_REQUEST, LOGOUT_RESPONSE -> MessageType.LOGOUT_RESPONSE;
             case HEARTBEAT, HEARTBEAT_ACK -> MessageType.HEARTBEAT_ACK;
+            case FILE_SOURCES_REQUEST, FILE_SOURCES_RESPONSE ->
+                    MessageType.FILE_SOURCES_RESPONSE;
             case ERROR -> MessageType.ERROR;
         };
     }

@@ -16,6 +16,9 @@ public enum MessageType {
     HEARTBEAT,
     HEARTBEAT_ACK,
 
+    FILE_SOURCES_REQUEST,
+    FILE_SOURCES_RESPONSE,
+
     /** Generic protocol-level error when no request-specific response exists. */
     ERROR
 }
