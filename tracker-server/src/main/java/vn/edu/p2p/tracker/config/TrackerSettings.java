@@ -21,6 +21,9 @@ public record TrackerSettings(
         int heartbeatIntervalSeconds,
         int heartbeatTimeoutSeconds,
         int statisticsIntervalSeconds,
+        int workerThreads,
+        int workerQueueCapacity,
+        int socketReadTimeoutMillis,
         TlsConfig tls
 ) {
     public static TrackerSettings load() {
@@ -97,6 +100,27 @@ public record TrackerSettings(
                 "statistics.interval.seconds",
                 30
         );
+        int workerThreads = intValue(
+                "TRACKER_WORKER_THREADS",
+                dotenv,
+                properties,
+                "tracker.worker.threads",
+                16
+        );
+        int workerQueueCapacity = intValue(
+                "TRACKER_WORKER_QUEUE_CAPACITY",
+                dotenv,
+                properties,
+                "tracker.worker.queue.capacity",
+                128
+        );
+        int socketReadTimeoutMillis = intValue(
+                "TRACKER_SOCKET_READ_TIMEOUT_MILLIS",
+                dotenv,
+                properties,
+                "tracker.socket.read.timeout.millis",
+                30_000
+        );
 
         boolean tlsEnabled = booleanValue(
                 "TRACKER_TLS_ENABLED",
@@ -137,10 +161,14 @@ public record TrackerSettings(
                     "heartbeat.timeout.seconds must be greater than heartbeat.interval.seconds"
             );
         }
-
         if (statisticsInterval < 1) {
             throw new IllegalStateException(
                     "statistics.interval.seconds must be positive"
+            );
+        }
+        if (workerThreads < 1 || workerQueueCapacity < 1 || socketReadTimeoutMillis < 1) {
+            throw new IllegalStateException(
+                    "Tracker worker/queue/socket timeout settings must be positive"
             );
         }
 
@@ -150,6 +178,9 @@ public record TrackerSettings(
                 heartbeatInterval,
                 heartbeatTimeout,
                 statisticsInterval,
+                workerThreads,
+                workerQueueCapacity,
+                socketReadTimeoutMillis,
                 new TlsConfig(
                         tlsEnabled,
                         keyStorePath,
@@ -230,7 +261,6 @@ public record TrackerSettings(
         if ("true".equalsIgnoreCase(raw)) {
             return true;
         }
-
         if ("false".equalsIgnoreCase(raw)) {
             return false;
         }

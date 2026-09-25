@@ -14,5 +14,8 @@ public enum MessageType {
     LOGOUT_RESPONSE,
 
     HEARTBEAT,
-    HEARTBEAT_ACK
+    HEARTBEAT_ACK,
+
+    /** Generic protocol-level error when no request-specific response exists. */
+    ERROR
 }

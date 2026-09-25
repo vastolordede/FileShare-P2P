@@ -61,7 +61,9 @@ public final class TrackerApplication {
         TrackerServer server = new TrackerServer(
                 settings.trackerPort(),
                 dispatcher,
-                TrackerServer.DEFAULT_WORKER_THREADS,
+                settings.workerThreads(),
+                settings.workerQueueCapacity(),
+                settings.socketReadTimeoutMillis(),
                 socketProvider,
                 settings.tls().enabled() ? "TLS" : "TCP"
         );
@@ -98,6 +100,15 @@ public final class TrackerApplication {
         System.out.printf(
                 "Statistics    : every %ds%n",
                 settings.statisticsIntervalSeconds()
+        );
+        System.out.printf(
+                "Concurrency   : %d workers, queue %d%n",
+                settings.workerThreads(),
+                settings.workerQueueCapacity()
+        );
+        System.out.printf(
+                "Socket timeout: %d ms%n",
+                settings.socketReadTimeoutMillis()
         );
         System.out.printf(
                 "Transport     : %s%n",

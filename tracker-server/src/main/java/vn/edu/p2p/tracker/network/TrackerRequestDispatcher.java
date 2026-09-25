@@ -1,5 +1,6 @@
 package vn.edu.p2p.tracker.network;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import vn.edu.p2p.common.dto.HeartbeatRequest;
 import vn.edu.p2p.common.dto.HeartbeatResponse;
 import vn.edu.p2p.common.dto.LoginRequest;
@@ -16,56 +17,68 @@ import vn.edu.p2p.tracker.peer.SessionException;
 public final class TrackerRequestDispatcher {
     private final AuthService authService;
     private final PeerSessionService peerSessionService;
+    private final RequestValidator validator;
 
     public TrackerRequestDispatcher(
             AuthService authService,
             PeerSessionService peerSessionService
     ) {
+        this(authService, peerSessionService, new RequestValidator());
+    }
+
+    TrackerRequestDispatcher(
+            AuthService authService,
+            PeerSessionService peerSessionService,
+            RequestValidator validator
+    ) {
         this.authService = authService;
         this.peerSessionService = peerSessionService;
+        this.validator = validator;
     }
 
     public MessageEnvelope dispatch(MessageEnvelope request, String remoteIp) {
-        if (request.version() != MessageEnvelope.CURRENT_VERSION) {
-            return MessageEnvelope.error(
-                    responseTypeFor(request.type()),
-                    request.requestId(),
-                    "UNSUPPORTED_PROTOCOL_VERSION",
-                    "Unsupported protocol version: " + request.version()
-            );
-        }
-
         try {
+            validator.validateEnvelope(request);
+
             return switch (request.type()) {
                 case LOGIN_REQUEST -> handleLogin(request, remoteIp);
                 case LOGOUT_REQUEST -> handleLogout(request);
                 case HEARTBEAT -> handleHeartbeat(request);
-                default -> MessageEnvelope.error(
-                        responseTypeFor(request.type()),
-                        request.requestId(),
-                        "UNSUPPORTED_MESSAGE",
-                        "Unsupported message type: " + request.type()
-                );
+                case LOGIN_RESPONSE, LOGOUT_RESPONSE, HEARTBEAT_ACK, ERROR ->
+                        TrackerErrorResponses.forRequest(
+                                request,
+                                "UNSUPPORTED_MESSAGE",
+                                "Tracker accepts request messages only."
+                        );
             };
+        } catch (RequestValidationException e) {
+            return TrackerErrorResponses.forRequest(
+                    request,
+                    e.errorCode(),
+                    e.getMessage()
+            );
+        } catch (JsonProcessingException e) {
+            return TrackerErrorResponses.forRequest(
+                    request,
+                    "INVALID_REQUEST",
+                    "Request payload does not match the expected format."
+            );
         } catch (AuthException e) {
-            return MessageEnvelope.error(
-                    responseTypeFor(request.type()),
-                    request.requestId(),
+            return TrackerErrorResponses.forRequest(
+                    request,
                     e.errorCode(),
                     e.getMessage()
             );
         } catch (SessionException e) {
-            return MessageEnvelope.error(
-                    responseTypeFor(request.type()),
-                    request.requestId(),
+            return TrackerErrorResponses.forRequest(
+                    request,
                     e.errorCode(),
                     e.getMessage()
             );
         } catch (Exception e) {
             e.printStackTrace(System.err);
-            return MessageEnvelope.error(
-                    responseTypeFor(request.type()),
-                    request.requestId(),
+            return TrackerErrorResponses.forRequest(
+                    request,
                     "SERVER_ERROR",
                     "Tracker failed to process the request."
             );
@@ -80,6 +93,7 @@ public final class TrackerRequestDispatcher {
                 request.payload(),
                 LoginRequest.class
         );
+        validator.validateLogin(payload);
 
         LoginResponse response = authService.login(payload, remoteIp);
         return MessageEnvelope.success(
@@ -94,6 +108,7 @@ public final class TrackerRequestDispatcher {
                 request.payload(),
                 LogoutRequest.class
         );
+        validator.validateLogout(payload);
         authService.logout(payload);
 
         return MessageEnvelope.success(
@@ -108,6 +123,7 @@ public final class TrackerRequestDispatcher {
                 request.payload(),
                 HeartbeatRequest.class
         );
+        validator.validateHeartbeat(payload);
         HeartbeatResponse response = peerSessionService.heartbeat(payload);
 
         return MessageEnvelope.success(
@@ -115,13 +131,5 @@ public final class TrackerRequestDispatcher {
                 request.requestId(),
                 ProtocolCodec.toPayload(response)
         );
-    }
-
-    private static MessageType responseTypeFor(MessageType requestType) {
-        return switch (requestType) {
-            case LOGIN_REQUEST, LOGIN_RESPONSE -> MessageType.LOGIN_RESPONSE;
-            case LOGOUT_REQUEST, LOGOUT_RESPONSE -> MessageType.LOGOUT_RESPONSE;
-            case HEARTBEAT, HEARTBEAT_ACK -> MessageType.HEARTBEAT_ACK;
-        };
     }
 }
