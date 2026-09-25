@@ -7,8 +7,12 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public final class TrackerStatisticsMonitor implements AutoCloseable {
+    private static final Logger LOG = Logger.getLogger(TrackerStatisticsMonitor.class.getName());
+
     private final TrackerStatisticsService statisticsService;
     private final Duration interval;
     private final ScheduledExecutorService scheduler;
@@ -47,21 +51,17 @@ public final class TrackerStatisticsMonitor implements AutoCloseable {
     private void printSnapshot() {
         try {
             TrackerStatistics stats = statisticsService.snapshot();
-            System.out.printf(
-                    "[Tracker stats] users=%d | onlinePeers=%d | sharedFiles=%d | at=%s%n",
+            LOG.info(() -> String.format(
+                    "Tracker stats: users=%d, onlinePeers=%d, sharedFiles=%d, at=%s",
                     stats.registeredUsers(),
                     stats.onlinePeers(),
                     stats.sharedFiles(),
                     stats.capturedAt()
-            );
+            ));
         } catch (SQLException e) {
-            System.err.println(
-                    "Tracker statistics database error: " + e.getMessage()
-            );
+            LOG.log(Level.WARNING, "Tracker statistics database error", e);
         } catch (RuntimeException e) {
-            System.err.println(
-                    "Tracker statistics error: " + e.getMessage()
-            );
+            LOG.log(Level.WARNING, "Tracker statistics error", e);
         }
     }
 

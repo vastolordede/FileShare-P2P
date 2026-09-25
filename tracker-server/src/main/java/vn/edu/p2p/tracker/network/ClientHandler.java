@@ -8,8 +8,12 @@ import java.io.EOFException;
 import java.io.IOException;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 final class ClientHandler implements Runnable {
+    private static final Logger LOG = Logger.getLogger(ClientHandler.class.getName());
+
     private final Socket socket;
     private final TrackerRequestDispatcher dispatcher;
     private final int readTimeoutMillis;
@@ -39,11 +43,11 @@ final class ClientHandler implements Runnable {
                 } catch (EOFException e) {
                     break;
                 } catch (SocketTimeoutException e) {
-                    System.err.printf(
-                            "Peer connection %s timed out after %d ms.%n",
+                    LOG.info(() -> String.format(
+                            "Peer connection %s timed out after %d ms",
                             remoteIp,
                             readTimeoutMillis
-                    );
+                    ));
                     break;
                 } catch (ProtocolException e) {
                     writeProtocolError(client, e);
@@ -54,10 +58,10 @@ final class ClientHandler implements Runnable {
                 ProtocolCodec.write(client.getOutputStream(), response);
             }
         } catch (IOException e) {
-            System.err.printf(
-                    "Peer connection %s closed: %s%n",
-                    remoteIp,
-                    e.getMessage()
+            LOG.log(
+                    Level.FINE,
+                    "Peer connection " + remoteIp + " closed: " + e.getMessage(),
+                    e
             );
         }
     }

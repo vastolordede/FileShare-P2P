@@ -4,6 +4,7 @@ import vn.edu.p2p.tracker.auth.BCryptPasswordService;
 import vn.edu.p2p.tracker.auth.DefaultAuthService;
 import vn.edu.p2p.tracker.config.DatabaseConnectionFactory;
 import vn.edu.p2p.tracker.config.TrackerSettings;
+import vn.edu.p2p.tracker.logging.TrackerLogging;
 import vn.edu.p2p.tracker.network.TrackerRequestDispatcher;
 import vn.edu.p2p.tracker.network.TrackerServerSocketProvider;
 import vn.edu.p2p.tracker.network.TlsTrackerServerSocketProvider;
@@ -25,13 +26,17 @@ import vn.edu.p2p.tracker.statistics.TrackerStatisticsMonitor;
 import vn.edu.p2p.tracker.statistics.TrackerStatisticsService;
 
 import java.time.Duration;
+import java.util.logging.Logger;
 
 public final class TrackerApplication {
+    private static final Logger LOG = Logger.getLogger(TrackerApplication.class.getName());
+
     private TrackerApplication() {
     }
 
     public static void main(String[] args) throws Exception {
         TrackerSettings settings = TrackerSettings.load();
+        TrackerLogging.configure(settings.logLevel());
 
         DatabaseConnectionFactory connectionFactory =
                 new DatabaseConnectionFactory(settings.database());
@@ -100,36 +105,20 @@ public final class TrackerApplication {
                 }, "tracker-shutdown")
         );
 
-        System.out.println("==========================================");
-        System.out.println(" FileShare-P2P Tracker — Week 4          ");
-        System.out.println("==========================================");
-        System.out.printf("Tracker port : %d%n", settings.trackerPort());
-        System.out.printf("DB URL       : %s%n", settings.database().url());
-        System.out.printf("DB user      : %s%n", settings.database().username());
-        System.out.printf(
-                "Heartbeat     : every %ds, timeout %ds%n",
+        LOG.info(() -> String.format(
+                "Tracker ready: port=%d, db=%s, heartbeat=%ds/%ds timeout, "
+                        + "statistics=%ds, workers=%d, queue=%d, socketTimeout=%dms, "
+                        + "transport=%s",
+                settings.trackerPort(),
+                settings.database().url(),
                 settings.heartbeatIntervalSeconds(),
-                settings.heartbeatTimeoutSeconds()
-        );
-        System.out.printf(
-                "Statistics    : every %ds%n",
-                settings.statisticsIntervalSeconds()
-        );
-        System.out.printf(
-                "Concurrency   : %d workers, queue %d%n",
+                settings.heartbeatTimeoutSeconds(),
+                settings.statisticsIntervalSeconds(),
                 settings.workerThreads(),
-                settings.workerQueueCapacity()
-        );
-        System.out.printf(
-                "Socket timeout: %d ms%n",
-                settings.socketReadTimeoutMillis()
-        );
-        System.out.printf(
-                "Transport     : %s%n",
-                settings.tls().enabled() ? "TLS" : "TCP (development fallback)"
-        );
-        System.out.println("DB check     : OK");
-        System.out.println();
+                settings.workerQueueCapacity(),
+                settings.socketReadTimeoutMillis(),
+                settings.tls().enabled() ? "TLS" : "TCP"
+        ));
 
         heartbeatMonitor.start();
         statisticsMonitor.start();

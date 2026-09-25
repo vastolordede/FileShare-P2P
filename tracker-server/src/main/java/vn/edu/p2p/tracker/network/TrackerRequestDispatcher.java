@@ -18,7 +18,12 @@ import vn.edu.p2p.tracker.peer.SessionException;
 import vn.edu.p2p.tracker.source.FileSourceException;
 import vn.edu.p2p.tracker.source.FileSourceService;
 
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
 public final class TrackerRequestDispatcher {
+    private static final Logger LOG = Logger.getLogger(TrackerRequestDispatcher.class.getName());
+
     private final AuthService authService;
     private final PeerSessionService peerSessionService;
     private final FileSourceService fileSourceService;
@@ -91,7 +96,7 @@ public final class TrackerRequestDispatcher {
                     request, e.errorCode(), e.getMessage()
             );
         } catch (Exception e) {
-            e.printStackTrace(System.err);
+            LOG.log(Level.SEVERE, "Unhandled Tracker request failure", e);
             return TrackerErrorResponses.forRequest(
                     request,
                     "SERVER_ERROR",
