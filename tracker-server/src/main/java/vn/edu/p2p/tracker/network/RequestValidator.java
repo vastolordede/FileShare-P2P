@@ -1,5 +1,6 @@
 package vn.edu.p2p.tracker.network;
 
+import vn.edu.p2p.common.dto.FileSourcesRequest;
 import vn.edu.p2p.common.dto.HeartbeatRequest;
 import vn.edu.p2p.common.dto.LoginRequest;
 import vn.edu.p2p.common.dto.LogoutRequest;
@@ -71,6 +72,20 @@ final class RequestValidator {
             throw invalid("Missing heartbeat payload.");
         }
         requireUuid(request.sessionId(), "INVALID_SESSION", "sessionId");
+    }
+
+    void validateFileSources(FileSourcesRequest request)
+            throws RequestValidationException {
+        if (request == null) {
+            throw invalid("Missing file-source payload.");
+        }
+        requireUuid(request.sessionId(), "INVALID_SESSION", "sessionId");
+        if (request.fileId() <= 0) {
+            throw new RequestValidationException(
+                    "INVALID_FILE_ID",
+                    "fileId must be positive."
+            );
+        }
     }
 
     private static void requireUuid(
