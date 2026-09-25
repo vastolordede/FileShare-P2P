@@ -60,36 +60,15 @@ public final class DefaultAuthService implements AuthService {
             UUID peerId = parseUuid(request.peerId(), "INVALID_PEER_ID");
             OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
 
-            Optional<PeerRecord> existingPeer = peerRepository.findById(peerId);
-            if (existingPeer.isPresent()) {
-                if (existingPeer.get().userId() != user.userId()) {
-                    throw new AuthException(
-                            "PEER_OWNERSHIP_MISMATCH",
-                            "Peer identity belongs to another account."
-                    );
-                }
-                peerRepository.updateLastLogin(peerId, now);
-            } else {
-                peerRepository.create(new PeerRecord(
-                        peerId,
-                        user.userId(),
-                        normalizeDeviceName(request.deviceName()),
-                        now,
-                        now
-                ));
-            }
-
-            int replacedSessions = sessionRepository.closeActiveForPeer(peerId, now);
-            if (replacedSessions > 0) {
-                System.out.printf(
-                        "Peer %s reconnect: replaced %d previous ONLINE session(s).%n",
-                        peerId,
-                        replacedSessions
-                );
-            }
+            ensurePeer(
+                    peerId,
+                    user.userId(),
+                    request.deviceName(),
+                    now
+            );
 
             UUID sessionId = UUID.randomUUID();
-            sessionRepository.create(new PeerSessionRecord(
+            PeerSessionRecord newSession = new PeerSessionRecord(
                     sessionId,
                     peerId,
                     normalizeIp(remoteIp),
@@ -98,7 +77,19 @@ public final class DefaultAuthService implements AuthService {
                     now,
                     now,
                     null
-            ));
+            );
+
+            int replacedSessions = sessionRepository.replaceActiveForPeer(
+                    newSession,
+                    now
+            );
+            if (replacedSessions > 0) {
+                System.out.printf(
+                        "Peer %s reconnect: replaced %d previous ONLINE session(s).%n",
+                        peerId,
+                        replacedSessions
+                );
+            }
 
             return new LoginResponse(
                     peerId.toString(),
@@ -139,6 +130,51 @@ public final class DefaultAuthService implements AuthService {
                     "DATABASE_ERROR",
                     "Tracker cannot update the session.",
                     e
+            );
+        }
+    }
+
+    private void ensurePeer(
+            UUID peerId,
+            long userId,
+            String deviceName,
+            OffsetDateTime now
+    ) throws SQLException, AuthException {
+        Optional<PeerRecord> existing = peerRepository.findById(peerId);
+        if (existing.isPresent()) {
+            verifyPeerOwnership(existing.get(), userId);
+            peerRepository.updateLastLogin(peerId, now);
+            return;
+        }
+
+        try {
+            peerRepository.create(new PeerRecord(
+                    peerId,
+                    userId,
+                    normalizeDeviceName(deviceName),
+                    now,
+                    now
+            ));
+        } catch (SQLException e) {
+            // Concurrent first-login attempts can race on peers(peer_id). If another
+            // request created the same Peer first, re-read and verify ownership.
+            if (!"23505".equals(e.getSQLState())) {
+                throw e;
+            }
+
+            PeerRecord concurrentPeer = peerRepository.findById(peerId)
+                    .orElseThrow(() -> e);
+            verifyPeerOwnership(concurrentPeer, userId);
+            peerRepository.updateLastLogin(peerId, now);
+        }
+    }
+
+    private static void verifyPeerOwnership(PeerRecord peer, long userId)
+            throws AuthException {
+        if (peer.userId() != userId) {
+            throw new AuthException(
+                    "PEER_OWNERSHIP_MISMATCH",
+                    "Peer identity belongs to another account."
             );
         }
     }
