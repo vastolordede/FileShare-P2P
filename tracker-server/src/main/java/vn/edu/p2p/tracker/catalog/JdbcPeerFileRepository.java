@@ -47,4 +47,22 @@ public final class JdbcPeerFileRepository implements PeerFileRepository {
             statement.executeUpdate();
         }
     }
+
+    @Override
+    public void setSharing(UUID peerId, long fileId, boolean sharing) throws SQLException {
+        String sql = """
+                UPDATE peer_files
+                SET is_sharing = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE peer_id = ? AND file_id = ?
+                """;
+
+        try (Connection connection = connectionFactory.open();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setBoolean(1, sharing);
+            statement.setObject(2, peerId);
+            statement.setLong(3, fileId);
+            statement.executeUpdate();
+        }
+    }
 }

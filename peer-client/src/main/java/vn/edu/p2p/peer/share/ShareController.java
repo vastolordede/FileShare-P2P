@@ -1,12 +1,17 @@
 package vn.edu.p2p.peer.share;
 
 import javafx.application.Platform;
+import javafx.collections.FXCollections;
+import javafx.collections.ObservableList;
 import javafx.fxml.FXML;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
+import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
 import javafx.stage.FileChooser;
 import vn.edu.p2p.common.dto.FileMetadata;
+import vn.edu.p2p.common.dto.ShareFileResponse;
+import vn.edu.p2p.peer.network.TrackerConnection;
 
 import java.io.File;
 import java.nio.file.Path;
@@ -14,12 +19,18 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * Controller for the Share File screen (T01).
+ * Controller for the Share File screen (T01-T15).
  *
  * Same pattern as LoginController: FXML-injected fields, a single-thread
- * background executor for blocking I/O (reading + hashing a file must not
- * run on the JavaFX Application Thread), and Platform.runLater to push
+ * background executor for blocking I/O, and Platform.runLater to push
  * results back to the UI.
+ *
+ * sharedFiles() exposes the ObservableList backing sharedFilesListView so
+ * MyFilesController can bind to the exact same list (T23: both screens
+ * always agree on what is being shared, no separate query needed).
+ *
+ * IMPORTANT: after switching scenes from Login to Share (post-login),
+ * the caller MUST call configure(trackerConnection, sessionId) once.
  */
 public final class ShareController {
 
@@ -33,7 +44,7 @@ public final class ShareController {
     private Label selectedFileLabel;
 
     @FXML
-    private ListView<String> sharedFilesListView;
+    private ListView<SharedFileEntry> sharedFilesListView;
 
     @FXML
     private Label statusLabel;
@@ -45,12 +56,38 @@ public final class ShareController {
     });
 
     private final FileMetadataBuilder metadataBuilder = new FileMetadataBuilder();
+    private final ObservableList<SharedFileEntry> sharedFiles = FXCollections.observableArrayList();
+
+    private ShareFileClientService shareFileClientService;
+    private String sessionId;
 
     private Path selectedFile;
 
     @FXML
     private void initialize() {
         statusLabel.setText("");
+        sharedFilesListView.setItems(sharedFiles);
+        sharedFilesListView.setCellFactory(list -> new ListCell<>() {
+            @Override
+            protected void updateItem(SharedFileEntry item, boolean empty) {
+                super.updateItem(item, empty);
+                setText(empty || item == null ? null : item.fileName());
+            }
+        });
+    }
+
+    /**
+     * Wires this controller to the live Tracker connection and current
+     * session, right after login succeeds.
+     */
+    public void configure(TrackerConnection connection, String sessionId) {
+        this.shareFileClientService = new ShareFileClientService(connection);
+        this.sessionId = sessionId;
+    }
+
+    /** Same backing list as sharedFilesListView - pass this into MyFilesController.configure(...). */
+    public ObservableList<SharedFileEntry> sharedFiles() {
+        return sharedFiles;
     }
 
     /** T02: choose a file with FileChooser. */
@@ -70,39 +107,45 @@ public final class ShareController {
         statusLabel.setText("");
     }
 
-    /** T03-T09: build FileMetadata (name, size, SHA-256, pieces) in the background. */
+    /** T03-T09: build FileMetadata, then T11: publish it to the Tracker. */
     @FXML
     private void onShareFile() {
         if (selectedFile == null) {
             return;
         }
 
+        if (shareFileClientService == null || sessionId == null) {
+            statusLabel.setText("Chưa cấu hình phiên đăng nhập cho màn hình Share.");
+            return;
+        }
+
         shareButton.setDisable(true);
-        statusLabel.setText("Đang đọc và băm file, vui lòng đợi...");
+        statusLabel.setText("Đang đọc, băm file và gửi lên Tracker...");
 
         ioExecutor.submit(() -> {
             try {
                 FileMetadata metadata = metadataBuilder.build(selectedFile);
-                Platform.runLater(() -> onMetadataReady(metadata));
+                ShareFileResponse response = shareFileClientService.publish(sessionId, metadata);
+                Platform.runLater(() -> onShareSuccess(metadata, response));
             } catch (Exception e) {
-                Platform.runLater(() -> onError("Lỗi khi xử lý file: " + e.getMessage()));
+                Platform.runLater(() -> onError("Lỗi khi chia sẻ file: " + e.getMessage()));
             }
         });
     }
 
-    private void onMetadataReady(FileMetadata metadata) {
+    private void onShareSuccess(FileMetadata metadata, ShareFileResponse response) {
+        String note = response.isNewFile()
+                ? "File mới trong catalog"
+                : "File đã tồn tại trên Tracker (trùng SHA-256), dùng lại file_id="
+                        + response.fileId();
+
         statusLabel.setText(
-                "Đã tạo metadata cho \"" + metadata.fileName() + "\": "
-                        + metadata.pieceCount() + " piece, "
-                        + "sha256=" + metadata.fileHash().substring(0, 12) + "..."
+                "Chia sẻ thành công \"" + metadata.fileName() + "\" - "
+                        + metadata.pieceCount() + " piece. " + note
         );
 
-        sharedFilesListView.getItems().add(metadata.fileName());
+        sharedFiles.add(new SharedFileEntry(response.fileId(), metadata.fileName()));
         shareButton.setDisable(false);
-
-        // NEXT (T11, giai đoạn 2): gửi ShareFileRequest chứa metadata này
-        // lên Tracker qua TrackerConnection, cùng cách AuthClientService
-        // gửi LoginRequest hiện nay.
     }
 
     private void onError(String message) {

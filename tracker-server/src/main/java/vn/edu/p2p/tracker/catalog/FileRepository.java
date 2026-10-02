@@ -1,8 +1,10 @@
 package vn.edu.p2p.tracker.catalog;
 
 import vn.edu.p2p.common.dto.FileMetadata;
+import vn.edu.p2p.common.dto.SearchResultItem;
 
 import java.sql.SQLException;
+import java.util.List;
 import java.util.Optional;
 
 public interface FileRepository {
@@ -12,4 +14,7 @@ public interface FileRepository {
 
     /** T11-T12: insert a new file plus its pieces (files, file_pieces). Returns the new file_id. */
     long insert(FileMetadata metadata) throws SQLException;
+
+    /** T16-T17: search the catalog by (partial) file name, with each row's current source count. */
+    List<SearchResultItem> searchByName(String likePattern) throws SQLException;
 }

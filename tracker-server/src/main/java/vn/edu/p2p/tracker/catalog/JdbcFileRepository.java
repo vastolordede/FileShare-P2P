@@ -2,6 +2,7 @@ package vn.edu.p2p.tracker.catalog;
 
 import vn.edu.p2p.common.dto.FileMetadata;
 import vn.edu.p2p.common.dto.PieceInfo;
+import vn.edu.p2p.common.dto.SearchResultItem;
 import vn.edu.p2p.tracker.config.DatabaseConnectionFactory;
 
 import java.sql.Connection;
@@ -9,6 +10,8 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -16,6 +19,8 @@ import java.util.Optional;
  * style as JdbcUserRepository / JdbcPeerRepository / JdbcFileSourceRepository.
  */
 public final class JdbcFileRepository implements FileRepository {
+
+    private static final int SEARCH_RESULT_LIMIT = 50;
 
     private final DatabaseConnectionFactory connectionFactory;
 
@@ -98,6 +103,42 @@ public final class JdbcFileRepository implements FileRepository {
                 throw e;
             } finally {
                 connection.setAutoCommit(true);
+            }
+        }
+    }
+
+    @Override
+    public List<SearchResultItem> searchByName(String likePattern) throws SQLException {
+        // source_count only counts peers currently ACTIVELY sharing (is_sharing = TRUE),
+        // matching what the Search screen should show as "available now".
+        String sql = """
+                SELECT f.file_id, f.file_name, f.file_size, f.file_hash,
+                       COUNT(pf.peer_id) FILTER (WHERE pf.is_sharing = TRUE) AS source_count
+                FROM files f
+                LEFT JOIN peer_files pf ON pf.file_id = f.file_id
+                WHERE f.file_name ILIKE ?
+                GROUP BY f.file_id, f.file_name, f.file_size, f.file_hash
+                ORDER BY f.file_name
+                LIMIT ?
+                """;
+
+        try (Connection connection = connectionFactory.open();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, likePattern);
+            statement.setInt(2, SEARCH_RESULT_LIMIT);
+
+            try (ResultSet rs = statement.executeQuery()) {
+                List<SearchResultItem> results = new ArrayList<>();
+                while (rs.next()) {
+                    results.add(new SearchResultItem(
+                            rs.getLong("file_id"),
+                            rs.getString("file_name"),
+                            rs.getLong("file_size"),
+                            rs.getString("file_hash"),
+                            rs.getInt("source_count")
+                    ));
+                }
+                return results;
             }
         }
     }
