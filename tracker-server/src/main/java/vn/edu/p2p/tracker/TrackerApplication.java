@@ -2,6 +2,15 @@ package vn.edu.p2p.tracker;
 
 import vn.edu.p2p.tracker.auth.BCryptPasswordService;
 import vn.edu.p2p.tracker.auth.DefaultAuthService;
+import vn.edu.p2p.tracker.catalog.FileCatalogService;
+import vn.edu.p2p.tracker.catalog.FileRepository;
+import vn.edu.p2p.tracker.catalog.JdbcFileRepository;
+import vn.edu.p2p.tracker.catalog.JdbcPeerFileRepository;
+import vn.edu.p2p.tracker.catalog.JdbcSessionPeerResolver;
+import vn.edu.p2p.tracker.catalog.JdbcShareEventRepository;
+import vn.edu.p2p.tracker.catalog.PeerFileRepository;
+import vn.edu.p2p.tracker.catalog.SessionPeerResolver;
+import vn.edu.p2p.tracker.catalog.ShareEventRepository;
 import vn.edu.p2p.tracker.config.DatabaseConnectionFactory;
 import vn.edu.p2p.tracker.config.TrackerSettings;
 import vn.edu.p2p.tracker.logging.TrackerLogging;
@@ -51,6 +60,12 @@ public final class TrackerApplication {
         FileSourceRepository fileSources =
                 new JdbcFileSourceRepository(connectionFactory);
 
+        // T11-T25: Share / Search / Unshare (File Catalog).
+        FileRepository files = new JdbcFileRepository(connectionFactory);
+        PeerFileRepository peerFiles = new JdbcPeerFileRepository(connectionFactory);
+        ShareEventRepository shareEvents = new JdbcShareEventRepository(connectionFactory);
+        SessionPeerResolver sessionPeerResolver = new JdbcSessionPeerResolver(connectionFactory);
+
         DefaultAuthService authService = new DefaultAuthService(
                 users,
                 peers,
@@ -65,11 +80,19 @@ public final class TrackerApplication {
                 peerSessionService
         );
 
+        FileCatalogService fileCatalogService = new FileCatalogService(
+                sessionPeerResolver,
+                files,
+                peerFiles,
+                shareEvents
+        );
+
         TrackerRequestDispatcher dispatcher =
                 new TrackerRequestDispatcher(
                         authService,
                         peerSessionService,
-                        fileSourceService
+                        fileSourceService,
+                        fileCatalogService
                 );
 
         TrackerServerSocketProvider socketProvider =
