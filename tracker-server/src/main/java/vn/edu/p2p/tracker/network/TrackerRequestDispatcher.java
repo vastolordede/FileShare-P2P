@@ -8,11 +8,19 @@ import vn.edu.p2p.common.dto.HeartbeatResponse;
 import vn.edu.p2p.common.dto.LoginRequest;
 import vn.edu.p2p.common.dto.LoginResponse;
 import vn.edu.p2p.common.dto.LogoutRequest;
+import vn.edu.p2p.common.dto.SearchRequest;
+import vn.edu.p2p.common.dto.SearchResponse;
+import vn.edu.p2p.common.dto.ShareFileRequest;
+import vn.edu.p2p.common.dto.ShareFileResponse;
+import vn.edu.p2p.common.dto.UnshareFileRequest;
+import vn.edu.p2p.common.dto.UnshareFileResponse;
 import vn.edu.p2p.common.protocol.MessageEnvelope;
 import vn.edu.p2p.common.protocol.MessageType;
 import vn.edu.p2p.common.protocol.ProtocolCodec;
 import vn.edu.p2p.tracker.auth.AuthException;
 import vn.edu.p2p.tracker.auth.AuthService;
+import vn.edu.p2p.tracker.catalog.FileCatalogException;
+import vn.edu.p2p.tracker.catalog.FileCatalogService;
 import vn.edu.p2p.tracker.peer.PeerSessionService;
 import vn.edu.p2p.tracker.peer.SessionException;
 import vn.edu.p2p.tracker.source.FileSourceException;
@@ -27,13 +35,14 @@ public final class TrackerRequestDispatcher {
     private final AuthService authService;
     private final PeerSessionService peerSessionService;
     private final FileSourceService fileSourceService;
+    private final FileCatalogService fileCatalogService;
     private final RequestValidator validator;
 
     public TrackerRequestDispatcher(
             AuthService authService,
             PeerSessionService peerSessionService
     ) {
-        this(authService, peerSessionService, null, new RequestValidator());
+        this(authService, peerSessionService, null, null, new RequestValidator());
     }
 
     public TrackerRequestDispatcher(
@@ -41,18 +50,30 @@ public final class TrackerRequestDispatcher {
             PeerSessionService peerSessionService,
             FileSourceService fileSourceService
     ) {
-        this(authService, peerSessionService, fileSourceService, new RequestValidator());
+        this(authService, peerSessionService, fileSourceService, null, new RequestValidator());
+    }
+
+    /** T11-T25: overload that also wires in Share/Search/Unshare (FileCatalogService). */
+    public TrackerRequestDispatcher(
+            AuthService authService,
+            PeerSessionService peerSessionService,
+            FileSourceService fileSourceService,
+            FileCatalogService fileCatalogService
+    ) {
+        this(authService, peerSessionService, fileSourceService, fileCatalogService, new RequestValidator());
     }
 
     TrackerRequestDispatcher(
             AuthService authService,
             PeerSessionService peerSessionService,
             FileSourceService fileSourceService,
+            FileCatalogService fileCatalogService,
             RequestValidator validator
     ) {
         this.authService = authService;
         this.peerSessionService = peerSessionService;
         this.fileSourceService = fileSourceService;
+        this.fileCatalogService = fileCatalogService;
         this.validator = validator;
     }
 
@@ -65,8 +86,12 @@ public final class TrackerRequestDispatcher {
                 case LOGOUT_REQUEST -> handleLogout(request);
                 case HEARTBEAT -> handleHeartbeat(request);
                 case FILE_SOURCES_REQUEST -> handleFileSources(request);
+                case SHARE_FILE_REQUEST -> handleShareFile(request);
+                case SEARCH_REQUEST -> handleSearch(request);
+                case UNSHARE_FILE_REQUEST -> handleUnshareFile(request);
                 case LOGIN_RESPONSE, LOGOUT_RESPONSE, HEARTBEAT_ACK,
-                        FILE_SOURCES_RESPONSE, ERROR ->
+                        FILE_SOURCES_RESPONSE, SHARE_FILE_RESPONSE,
+                        SEARCH_RESPONSE, UNSHARE_FILE_RESPONSE, ERROR ->
                         TrackerErrorResponses.forRequest(
                                 request,
                                 "UNSUPPORTED_MESSAGE",
@@ -94,6 +119,10 @@ public final class TrackerRequestDispatcher {
         } catch (FileSourceException e) {
             return TrackerErrorResponses.forRequest(
                     request, e.errorCode(), e.getMessage()
+            );
+        } catch (FileCatalogException e) {
+            return TrackerErrorResponses.forRequest(
+                    request, "FILE_CATALOG_ERROR", e.getMessage()
             );
         } catch (Exception e) {
             LOG.log(Level.SEVERE, "Unhandled Tracker request failure", e);
@@ -167,6 +196,75 @@ public final class TrackerRequestDispatcher {
 
         return MessageEnvelope.success(
                 MessageType.FILE_SOURCES_RESPONSE,
+                request.requestId(),
+                ProtocolCodec.toPayload(response)
+        );
+    }
+
+    /** T11: publish a FileMetadata (share a file) into the catalog. */
+    private MessageEnvelope handleShareFile(MessageEnvelope request) throws Exception {
+        if (fileCatalogService == null) {
+            return TrackerErrorResponses.forRequest(
+                    request,
+                    "FEATURE_UNAVAILABLE",
+                    "File sharing is not configured on this Tracker."
+            );
+        }
+
+        ShareFileRequest payload = ProtocolCodec.fromPayload(
+                request.payload(), ShareFileRequest.class
+        );
+        validator.validateShareFile(payload);
+        ShareFileResponse response = fileCatalogService.publish(payload);
+
+        return MessageEnvelope.success(
+                MessageType.SHARE_FILE_RESPONSE,
+                request.requestId(),
+                ProtocolCodec.toPayload(response)
+        );
+    }
+
+    /** T16-T17: search the catalog by (partial) file name. */
+    private MessageEnvelope handleSearch(MessageEnvelope request) throws Exception {
+        if (fileCatalogService == null) {
+            return TrackerErrorResponses.forRequest(
+                    request,
+                    "FEATURE_UNAVAILABLE",
+                    "Search is not configured on this Tracker."
+            );
+        }
+
+        SearchRequest payload = ProtocolCodec.fromPayload(
+                request.payload(), SearchRequest.class
+        );
+        validator.validateSearch(payload);
+        SearchResponse response = fileCatalogService.search(payload);
+
+        return MessageEnvelope.success(
+                MessageType.SEARCH_RESPONSE,
+                request.requestId(),
+                ProtocolCodec.toPayload(response)
+        );
+    }
+
+    /** T22: stop sharing a file this peer previously announced. */
+    private MessageEnvelope handleUnshareFile(MessageEnvelope request) throws Exception {
+        if (fileCatalogService == null) {
+            return TrackerErrorResponses.forRequest(
+                    request,
+                    "FEATURE_UNAVAILABLE",
+                    "File sharing is not configured on this Tracker."
+            );
+        }
+
+        UnshareFileRequest payload = ProtocolCodec.fromPayload(
+                request.payload(), UnshareFileRequest.class
+        );
+        validator.validateUnshareFile(payload);
+        UnshareFileResponse response = fileCatalogService.unshare(payload);
+
+        return MessageEnvelope.success(
+                MessageType.UNSHARE_FILE_RESPONSE,
                 request.requestId(),
                 ProtocolCodec.toPayload(response)
         );

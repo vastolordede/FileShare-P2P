@@ -4,6 +4,9 @@ import vn.edu.p2p.common.dto.FileSourcesRequest;
 import vn.edu.p2p.common.dto.HeartbeatRequest;
 import vn.edu.p2p.common.dto.LoginRequest;
 import vn.edu.p2p.common.dto.LogoutRequest;
+import vn.edu.p2p.common.dto.SearchRequest;
+import vn.edu.p2p.common.dto.ShareFileRequest;
+import vn.edu.p2p.common.dto.UnshareFileRequest;
 import vn.edu.p2p.common.protocol.MessageEnvelope;
 
 import java.util.UUID;
@@ -12,6 +15,7 @@ final class RequestValidator {
     private static final int MAX_REQUEST_ID_LENGTH = 128;
     private static final int MAX_USERNAME_LENGTH = 50;
     private static final int MAX_DEVICE_NAME_LENGTH = 100;
+    private static final int MAX_SEARCH_QUERY_LENGTH = 255;
 
     void validateEnvelope(MessageEnvelope request) throws RequestValidationException {
         if (request == null) {
@@ -78,6 +82,57 @@ final class RequestValidator {
             throws RequestValidationException {
         if (request == null) {
             throw invalid("Missing file-source payload.");
+        }
+        requireUuid(request.sessionId(), "INVALID_SESSION", "sessionId");
+        if (request.fileId() <= 0) {
+            throw new RequestValidationException(
+                    "INVALID_FILE_ID",
+                    "fileId must be positive."
+            );
+        }
+    }
+
+    /** T11: validate a ShareFileRequest before it reaches FileCatalogService.publish(...). */
+    void validateShareFile(ShareFileRequest request) throws RequestValidationException {
+        if (request == null) {
+            throw invalid("Missing share-file payload.");
+        }
+        requireUuid(request.sessionId(), "INVALID_SESSION", "sessionId");
+        if (request.metadata() == null) {
+            throw new RequestValidationException(
+                    "INVALID_FILE_METADATA",
+                    "metadata is required."
+            );
+        }
+        // metadata's own compact constructor (FileMetadata record) already
+        // rejects a blank fileName, a malformed SHA-256 fileHash, and a
+        // non-positive pieceSize, so no need to re-check those fields here.
+    }
+
+    /** T16: validate a SearchRequest before it reaches FileCatalogService.search(...). */
+    void validateSearch(SearchRequest request) throws RequestValidationException {
+        if (request == null) {
+            throw invalid("Missing search payload.");
+        }
+        requireUuid(request.sessionId(), "INVALID_SESSION", "sessionId");
+        if (request.query() == null || request.query().isBlank()) {
+            throw new RequestValidationException(
+                    "INVALID_SEARCH_QUERY",
+                    "query is required."
+            );
+        }
+        if (request.query().trim().length() > MAX_SEARCH_QUERY_LENGTH) {
+            throw new RequestValidationException(
+                    "INVALID_SEARCH_QUERY",
+                    "query is too long."
+            );
+        }
+    }
+
+    /** T22: validate an UnshareFileRequest before it reaches FileCatalogService.unshare(...). */
+    void validateUnshareFile(UnshareFileRequest request) throws RequestValidationException {
+        if (request == null) {
+            throw invalid("Missing unshare payload.");
         }
         requireUuid(request.sessionId(), "INVALID_SESSION", "sessionId");
         if (request.fileId() <= 0) {
