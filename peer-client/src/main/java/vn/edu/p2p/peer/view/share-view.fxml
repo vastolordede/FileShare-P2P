@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.ListView?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.VBox?>
+
+<VBox xmlns="http://javafx.com/javafx"
+      xmlns:fx="http://javafx.com/fxml"
+      fx:controller="vn.edu.p2p.peer.share.ShareController"
+      spacing="12"
+      styleClass="login-root">
+
+    <padding>
+        <Insets top="20" right="24" bottom="20" left="24"/>
+    </padding>
+
+    <Label text="CHIA SẺ FILE" styleClass="title"/>
+
+    <HBox spacing="10">
+        <Button fx:id="chooseFileButton"
+                text="Chọn file..."
+                onAction="#onChooseFile"/>
+
+        <Button fx:id="shareButton"
+                text="Chia sẻ"
+                onAction="#onShareFile"
+                disable="true"/>
+    </HBox>
+
+    <Label fx:id="selectedFileLabel"
+           text="Chưa chọn file nào"
+           wrapText="true"
+           maxWidth="420"/>
+
+    <Label text="Các file đang chia sẻ:" styleClass="subtitle"/>
+
+    <ListView fx:id="sharedFilesListView" prefHeight="220"/>
+
+    <Label fx:id="statusLabel"
+           wrapText="true"
+           maxWidth="420"
+           styleClass="status"/>
+</VBox>
