@@ -19,6 +19,15 @@ public enum MessageType {
     FILE_SOURCES_REQUEST,
     FILE_SOURCES_RESPONSE,
 
+    SHARE_FILE_REQUEST,
+    SHARE_FILE_RESPONSE,
+
+    SEARCH_REQUEST,
+    SEARCH_RESPONSE,
+
+    UNSHARE_FILE_REQUEST,
+    UNSHARE_FILE_RESPONSE,
+
     /** Generic protocol-level error when no request-specific response exists. */
     ERROR
 }

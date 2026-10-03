@@ -10,4 +10,7 @@ public interface PeerFileRepository {
      * or refresh its status if the (peer_id, file_id) row already exists.
      */
     void upsertOwnership(UUID peerId, long fileId, String availabilityStatus) throws SQLException;
+
+    /** T22: stop/resume sharing without touching availability_status or the catalog row. */
+    void setSharing(UUID peerId, long fileId, boolean sharing) throws SQLException;
 }

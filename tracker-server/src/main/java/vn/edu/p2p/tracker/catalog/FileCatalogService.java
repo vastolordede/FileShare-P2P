@@ -1,23 +1,32 @@
 package vn.edu.p2p.tracker.catalog;
 
 import vn.edu.p2p.common.dto.FileMetadata;
+import vn.edu.p2p.common.dto.SearchRequest;
+import vn.edu.p2p.common.dto.SearchResponse;
+import vn.edu.p2p.common.dto.SearchResultItem;
 import vn.edu.p2p.common.dto.ShareFileRequest;
 import vn.edu.p2p.common.dto.ShareFileResponse;
+import vn.edu.p2p.common.dto.UnshareFileRequest;
+import vn.edu.p2p.common.dto.UnshareFileResponse;
 import vn.edu.p2p.tracker.config.DatabaseConnectionFactory;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Business logic behind SHARE_FILE_REQUEST:
+ * Business logic behind SHARE_FILE_REQUEST, SEARCH_REQUEST and
+ * UNSHARE_FILE_REQUEST:
  *  - resolve the sessionId to an active peer
  *  - T13: detect duplicate files by SHA-256 hash
  *  - T11-T12: insert new file + pieces into the catalog when not a duplicate
  *  - T14-T15: record/refresh the sharing peer's ownership row
+ *  - T16-T17: search the catalog by name
+ *  - T22: stop sharing a file this peer previously announced
  *
  * NOTE: resolvePeerId(...) below runs its own direct query against
  * peer_sessions. If Đặng's PeerSessionRepository already exposes a method
@@ -70,6 +79,35 @@ public final class FileCatalogService {
         return new ShareFileResponse(fileId, isNewFile, availabilityStatus);
     }
 
+    /** T16-T17: search by (partial) file name. */
+    public SearchResponse search(SearchRequest request) throws FileCatalogException, SQLException {
+        UUID sessionId = parseSessionId(request.sessionId());
+        // Require an active session even though the query itself doesn't
+        // need the peer identity - keeps Search behind the same auth gate
+        // as every other Tracker request.
+        resolvePeerId(sessionId);
+
+        String query = request.query() == null ? "" : request.query().trim();
+        if (query.isEmpty()) {
+            throw new FileCatalogException("Search query must not be empty");
+        }
+
+        String likePattern = "%" + escapeLike(query) + "%";
+        List<SearchResultItem> results = fileRepository.searchByName(likePattern);
+
+        return new SearchResponse(results);
+    }
+
+    /** T22: stop sharing - only affects this peer's own peer_files row. */
+    public UnshareFileResponse unshare(UnshareFileRequest request) throws FileCatalogException, SQLException {
+        UUID sessionId = parseSessionId(request.sessionId());
+        UUID peerId = resolvePeerId(sessionId);
+
+        peerFileRepository.setSharing(peerId, request.fileId(), false);
+
+        return new UnshareFileResponse(request.fileId(), true);
+    }
+
     private UUID parseSessionId(String sessionId) throws FileCatalogException {
         try {
             return UUID.fromString(sessionId);
@@ -96,5 +134,13 @@ public final class FileCatalogService {
                 return rs.getObject("peer_id", UUID.class);
             }
         }
+    }
+
+    /** Escapes ILIKE special characters so a search for "50%" or "a_b" is literal. */
+    private static String escapeLike(String raw) {
+        return raw
+                .replace("\\", "\\\\")
+                .replace("%", "\\%")
+                .replace("_", "\\_");
     }
 }

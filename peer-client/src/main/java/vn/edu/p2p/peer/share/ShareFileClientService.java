@@ -3,6 +3,8 @@ package vn.edu.p2p.peer.share;
 import vn.edu.p2p.common.dto.FileMetadata;
 import vn.edu.p2p.common.dto.ShareFileRequest;
 import vn.edu.p2p.common.dto.ShareFileResponse;
+import vn.edu.p2p.common.dto.UnshareFileRequest;
+import vn.edu.p2p.common.dto.UnshareFileResponse;
 import vn.edu.p2p.common.protocol.MessageEnvelope;
 import vn.edu.p2p.common.protocol.MessageType;
 import vn.edu.p2p.common.protocol.ProtocolCodec;
@@ -13,11 +15,8 @@ import java.io.IOException;
 import java.util.UUID;
 
 /**
- * Sends a ShareFileRequest to the Tracker (T11) once FileMetadataBuilder has
- * produced the FileMetadata locally, and parses the ShareFileResponse.
- *
- * Mirrors AuthClientService's request/response pattern (build DTO -> wrap
- * in MessageEnvelope.request -> TrackerConnection.request -> unwrap payload).
+ * Sends ShareFileRequest (T11) and UnshareFileRequest (T22) to the Tracker.
+ * Mirrors AuthClientService's request/response pattern.
  */
 public final class ShareFileClientService {
 
@@ -42,12 +41,8 @@ public final class ShareFileClientService {
             MessageEnvelope response = connection.request(request);
 
             if (response.status() == ResponseStatus.ERROR) {
-                String detail = response.errorCode() != null
-                        ? response.errorCode() + ": " + response.message()
-                        : response.message();
-                throw new ShareFileClientException(detail);
+                throw new ShareFileClientException(errorText(response));
             }
-
             if (response.type() != MessageType.SHARE_FILE_RESPONSE) {
                 throw new ShareFileClientException(
                         "Unexpected response type from Tracker: " + response.type()
@@ -60,5 +55,41 @@ public final class ShareFileClientService {
                     "Network error while sharing file: " + e.getMessage(), e
             );
         }
+    }
+
+    /** T22: stop sharing a file this peer previously published. */
+    public UnshareFileResponse unshare(String sessionId, long fileId) throws ShareFileClientException {
+        UnshareFileRequest payload = new UnshareFileRequest(sessionId, fileId);
+
+        MessageEnvelope request = MessageEnvelope.request(
+                MessageType.UNSHARE_FILE_REQUEST,
+                UUID.randomUUID().toString(),
+                ProtocolCodec.toPayload(payload)
+        );
+
+        try {
+            MessageEnvelope response = connection.request(request);
+
+            if (response.status() == ResponseStatus.ERROR) {
+                throw new ShareFileClientException(errorText(response));
+            }
+            if (response.type() != MessageType.UNSHARE_FILE_RESPONSE) {
+                throw new ShareFileClientException(
+                        "Unexpected response type from Tracker: " + response.type()
+                );
+            }
+
+            return ProtocolCodec.fromPayload(response.payload(), UnshareFileResponse.class);
+        } catch (IOException e) {
+            throw new ShareFileClientException(
+                    "Network error while unsharing file: " + e.getMessage(), e
+            );
+        }
+    }
+
+    private static String errorText(MessageEnvelope response) {
+        return response.errorCode() != null
+                ? response.errorCode() + ": " + response.message()
+                : response.message();
     }
 }
