@@ -21,7 +21,7 @@ public final class FileHashUtil {
     private FileHashUtil() {
     }
 
-    /** Hash of the whole file, streamed (safe for large files). */
+    /** Tính hash SHA-256 của toàn bộ nội dung file, trả về chuỗi hex */
     public static String sha256(Path file) throws IOException {
         MessageDigest digest = newDigest();
 
@@ -36,7 +36,7 @@ public final class FileHashUtil {
         return toHex(digest.digest());
     }
 
-    /** Hash of a single in-memory piece (buffer[offset..offset+length)). */
+    /** Tính hash SHA-256 cho một đoạn của mảng byte, từ vị trí offset đến offset + length. */
     public static String sha256(byte[] data, int offset, int length) {
         MessageDigest digest = newDigest();
         digest.update(data, offset, length);
