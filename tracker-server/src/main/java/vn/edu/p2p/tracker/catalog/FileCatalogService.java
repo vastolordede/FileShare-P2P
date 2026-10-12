@@ -8,11 +8,7 @@ import vn.edu.p2p.common.dto.ShareFileRequest;
 import vn.edu.p2p.common.dto.ShareFileResponse;
 import vn.edu.p2p.common.dto.UnshareFileRequest;
 import vn.edu.p2p.common.dto.UnshareFileResponse;
-import vn.edu.p2p.tracker.config.DatabaseConnectionFactory;
 
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.List;
 import java.util.Optional;
@@ -21,37 +17,36 @@ import java.util.UUID;
 /**
  * Business logic behind SHARE_FILE_REQUEST, SEARCH_REQUEST and
  * UNSHARE_FILE_REQUEST:
- *  - resolve the sessionId to an active peer
+ *  - resolve the sessionId to an active peer (via SessionPeerResolver)
  *  - T13: detect duplicate files by SHA-256 hash
  *  - T11-T12: insert new file + pieces into the catalog when not a duplicate
  *  - T14-T15: record/refresh the sharing peer's ownership row
  *  - T16-T17: search the catalog by name
  *  - T22: stop sharing a file this peer previously announced
- *
- * NOTE: resolvePeerId(...) below runs its own direct query against
- * peer_sessions. If Đặng's PeerSessionRepository already exposes a method
- * to resolve peer_id from session_id, swap it in here instead - the rest
- * of the flow (dedupe -> insert -> ownership) stays unchanged.
+ *  - T24-T25: log SHARE_START / SHARE_STOP into share_events
  */
 public final class FileCatalogService {
 
-    private final DatabaseConnectionFactory connectionFactory;
+    private final SessionPeerResolver sessionPeerResolver;
     private final FileRepository fileRepository;
     private final PeerFileRepository peerFileRepository;
+    private final ShareEventRepository shareEventRepository;
 
     public FileCatalogService(
-            DatabaseConnectionFactory connectionFactory,
+            SessionPeerResolver sessionPeerResolver,
             FileRepository fileRepository,
-            PeerFileRepository peerFileRepository
+            PeerFileRepository peerFileRepository,
+            ShareEventRepository shareEventRepository
     ) {
-        this.connectionFactory = connectionFactory;
+        this.sessionPeerResolver = sessionPeerResolver;
         this.fileRepository = fileRepository;
         this.peerFileRepository = peerFileRepository;
+        this.shareEventRepository = shareEventRepository;
     }
 
     public ShareFileResponse publish(ShareFileRequest request) throws FileCatalogException, SQLException {
         UUID sessionId = parseSessionId(request.sessionId());
-        UUID peerId = resolvePeerId(sessionId);
+        UUID peerId = sessionPeerResolver.resolvePeerId(sessionId);
 
         FileMetadata metadata = request.metadata();
 
@@ -76,6 +71,9 @@ public final class FileCatalogService {
         String availabilityStatus = "COMPLETE";
         peerFileRepository.upsertOwnership(peerId, fileId, availabilityStatus);
 
+        // T24: log SHARE_START every time a peer (re-)announces sharing.
+        shareEventRepository.insert(peerId, fileId, "SHARE_START");
+
         return new ShareFileResponse(fileId, isNewFile, availabilityStatus);
     }
 
@@ -85,7 +83,7 @@ public final class FileCatalogService {
         // Require an active session even though the query itself doesn't
         // need the peer identity - keeps Search behind the same auth gate
         // as every other Tracker request.
-        resolvePeerId(sessionId);
+        sessionPeerResolver.resolvePeerId(sessionId);
 
         String query = request.query() == null ? "" : request.query().trim();
         if (query.isEmpty()) {
@@ -98,12 +96,13 @@ public final class FileCatalogService {
         return new SearchResponse(results);
     }
 
-    /** T22: stop sharing - only affects this peer's own peer_files row. */
+    /** T22: stop sharing - only affects this peer's own peer_files row. T25: logs SHARE_STOP. */
     public UnshareFileResponse unshare(UnshareFileRequest request) throws FileCatalogException, SQLException {
         UUID sessionId = parseSessionId(request.sessionId());
-        UUID peerId = resolvePeerId(sessionId);
+        UUID peerId = sessionPeerResolver.resolvePeerId(sessionId);
 
         peerFileRepository.setSharing(peerId, request.fileId(), false);
+        shareEventRepository.insert(peerId, request.fileId(), "SHARE_STOP");
 
         return new UnshareFileResponse(request.fileId(), true);
     }
@@ -113,26 +112,6 @@ public final class FileCatalogService {
             return UUID.fromString(sessionId);
         } catch (IllegalArgumentException e) {
             throw new FileCatalogException("Invalid sessionId: " + sessionId);
-        }
-    }
-
-    private UUID resolvePeerId(UUID sessionId) throws FileCatalogException, SQLException {
-        String sql = """
-                SELECT peer_id
-                FROM peer_sessions
-                WHERE session_id = ? AND status = 'ONLINE'
-                """;
-
-        try (Connection connection = connectionFactory.open();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setObject(1, sessionId);
-
-            try (ResultSet rs = statement.executeQuery()) {
-                if (!rs.next()) {
-                    throw new FileCatalogException("Session is not active: " + sessionId);
-                }
-                return rs.getObject("peer_id", UUID.class);
-            }
         }
     }
 
