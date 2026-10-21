@@ -27,7 +27,12 @@ public enum MessageType {
 
     UNSHARE_FILE_REQUEST,
     UNSHARE_FILE_RESPONSE,
+    
+    GET_BITFIELD_REQUEST,
+    BITFIELD_RESPONSE,
 
+    REQUEST_PIECE,
+    PIECE_RESPONSE,
     /** Generic protocol-level error when no request-specific response exists. */
     ERROR
 }

@@ -96,4 +96,49 @@ public final class ProtocolCodec {
             throw new ProtocolException("Invalid JSON message: " + raw, e);
         }
     }
+
+    public static void writeWithBinaryPayload(
+            OutputStream output,
+            MessageEnvelope header,
+            byte[] binaryPayload,
+            int offset,
+            int length
+    ) throws IOException {
+        if (length < 0 || offset < 0 || offset + length > binaryPayload.length) {
+            throw new IllegalArgumentException("Invalid binary payload bounds: length=" + length);
+        }
+
+        byte[] json = MAPPER.writeValueAsBytes(header);
+        if (json.length == 0 || json.length > MAX_JSON_BYTES) {
+            throw new ProtocolException("Invalid control-message size: " + json.length);
+        }
+
+        DataOutputStream dataOutput = new DataOutputStream(output);
+        dataOutput.writeInt(json.length);
+        dataOutput.write(json);
+        if (length > 0) {
+            dataOutput.write(binaryPayload, offset, length);
+        }
+        dataOutput.flush();
+    }
+    
+    public static byte[] readBinaryPayload(InputStream input, int expectedLength)
+            throws IOException {
+        if (expectedLength < 0) {
+            throw new ProtocolException("Negative binary payload length: " + expectedLength);
+        }
+        if (expectedLength == 0) {
+            return new byte[0];
+        }
+
+        DataInputStream dataInput = new DataInputStream(input);
+        byte[] data = dataInput.readNBytes(expectedLength);
+        if (data.length != expectedLength) {
+            throw new EOFException(
+                    "Connection closed before receiving full piece payload: expected "
+                            + expectedLength + " bytes, got " + data.length
+            );
+        }
+        return data;
+    }
 }
