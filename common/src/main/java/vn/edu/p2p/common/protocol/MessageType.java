@@ -33,6 +33,12 @@ public enum MessageType {
 
     REQUEST_PIECE,
     PIECE_RESPONSE,
+
+    RECORD_TRANSFER_REQUEST,
+    RECORD_TRANSFER_RESPONSE,
+
+    TRANSFER_HISTORY_REQUEST,
+    TRANSFER_HISTORY_RESPONSE,
     /** Generic protocol-level error when no request-specific response exists. */
     ERROR
 }

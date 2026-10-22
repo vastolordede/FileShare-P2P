@@ -15,9 +15,13 @@ final class TrackerErrorResponses {
         if (request == null) {
             return protocolError("unknown", errorCode, message);
         }
+
+        String requestId = request.requestId() == null ? "unknown" : request.requestId();
+        MessageType responseType = responseTypeFor(request.type());
+
         return MessageEnvelope.error(
-                responseTypeFor(request.type()),
-                safeRequestId(request.requestId()),
+                responseType,
+                requestId,
                 errorCode,
                 message
         );
@@ -30,27 +34,30 @@ final class TrackerErrorResponses {
     ) {
         return MessageEnvelope.error(
                 MessageType.ERROR,
-                safeRequestId(requestId),
+                requestId == null ? "unknown" : requestId,
                 errorCode,
                 message
         );
     }
 
-    static MessageType responseTypeFor(MessageType requestType) {
+    private static MessageType responseTypeFor(MessageType requestType) {
         if (requestType == null) {
             return MessageType.ERROR;
         }
-        return switch (requestType) {
-            case LOGIN_REQUEST, LOGIN_RESPONSE -> MessageType.LOGIN_RESPONSE;
-            case LOGOUT_REQUEST, LOGOUT_RESPONSE -> MessageType.LOGOUT_RESPONSE;
-            case HEARTBEAT, HEARTBEAT_ACK -> MessageType.HEARTBEAT_ACK;
-            case FILE_SOURCES_REQUEST, FILE_SOURCES_RESPONSE ->
-                    MessageType.FILE_SOURCES_RESPONSE;
-            case ERROR -> MessageType.ERROR;
-        };
-    }
 
-    private static String safeRequestId(String requestId) {
-        return requestId == null || requestId.isBlank() ? "unknown" : requestId;
+        return switch (requestType) {
+            case LOGIN_REQUEST -> MessageType.LOGIN_RESPONSE;
+            case LOGOUT_REQUEST -> MessageType.LOGOUT_RESPONSE;
+            case HEARTBEAT -> MessageType.HEARTBEAT_ACK;
+            case FILE_SOURCES_REQUEST -> MessageType.FILE_SOURCES_RESPONSE;
+            case SHARE_FILE_REQUEST -> MessageType.SHARE_FILE_RESPONSE;
+            case SEARCH_REQUEST -> MessageType.SEARCH_RESPONSE;
+            case UNSHARE_FILE_REQUEST -> MessageType.UNSHARE_FILE_RESPONSE;
+            case GET_BITFIELD_REQUEST -> MessageType.BITFIELD_RESPONSE;
+            case REQUEST_PIECE -> MessageType.PIECE_RESPONSE;
+            case RECORD_TRANSFER_REQUEST -> MessageType.RECORD_TRANSFER_RESPONSE;
+            case TRANSFER_HISTORY_REQUEST -> MessageType.TRANSFER_HISTORY_RESPONSE;
+            default -> MessageType.ERROR;
+        };
     }
 }
