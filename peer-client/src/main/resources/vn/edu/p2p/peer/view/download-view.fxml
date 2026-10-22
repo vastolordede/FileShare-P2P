@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.ComboBox?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.ListView?>
+<?import javafx.scene.control.ProgressBar?>
+<?import javafx.scene.control.TextField?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.Priority?>
+<?import javafx.scene.layout.VBox?>
+
+<VBox spacing="12.0" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1"
+      fx:controller="vn.edu.p2p.peer.transfer.DownloadController">
+    <padding>
+        <Insets top="16.0" right="16.0" bottom="16.0" left="16.0"/>
+    </padding>
+
+    <Label text="Tải File Đa Nguồn (Multi-Source P2P Downloader)"
+           style="-fx-font-size: 16px; -fx-font-weight: bold;"/>
+
+    <!-- Khu vực nhập File ID, Tên file và chọn thuật toán lập lịch -->
+    <HBox spacing="10.0" alignment="CENTER_LEFT">
+        <Label text="File ID:"/>
+        <TextField fx:id="fileIdField" promptText="Nhập file_id (VD: 1)" prefWidth="90.0"/>
+        <Label text="Tên file lưu:"/>
+        <TextField fx:id="fileNameField" promptText="VD: video.mp4" HBox.hgrow="ALWAYS"/>
+        <ComboBox fx:id="strategyComboBox" prefWidth="150.0"/>
+    </HBox>
+
+    <!-- Khu vực chọn thư mục đích trên ổ cứng -->
+    <HBox spacing="10.0" alignment="CENTER_LEFT">
+        <Label text="Thư mục lưu:"/>
+        <TextField fx:id="outputDirField" editable="false" HBox.hgrow="ALWAYS"/>
+        <Button fx:id="chooseDirButton" text="Chọn thư mục..." onAction="#onChooseDirectory"/>
+    </HBox>
+
+    <!-- Các nút điều khiển Tải / Tạm dừng (Resume) -->
+    <HBox spacing="10.0" alignment="CENTER_LEFT">
+        <Button fx:id="startDownloadButton" text="Bắt đầu tải / Tải tiếp (Resume)" onAction="#onStartDownload"/>
+        <Button fx:id="cancelDownloadButton" text="Tạm dừng / Hủy" onAction="#onCancelDownload" disable="true"/>
+    </HBox>
+
+    <!-- S16: Thanh tiến trình % và số lượng piece đã hoàn thành -->
+    <VBox spacing="6.0">
+        <ProgressBar fx:id="progressBar" progress="0.0" maxWidth="Infinity" prefHeight="22.0"/>
+        <HBox spacing="20.0" alignment="CENTER_LEFT">
+            <Label fx:id="progressPercentLabel" text="Tiến độ: 0.0% (0 / 0 pieces)"/>
+            <Label fx:id="downloadSpeedLabel" text="Tốc độ tải (DL): 0.0 KB/s"
+                   style="-fx-font-weight: bold; -fx-text-fill: #0284c7;"/>
+            <Label fx:id="uploadSpeedLabel" text="Tốc độ phát (UL): 0.0 KB/s"
+                   style="-fx-font-weight: bold; -fx-text-fill: #059669;"/>
+        </HBox>
+    </VBox>
+
+    <!-- Danh sách các Peer nguồn đang tham gia phiên tải -->
+    <Label text="Danh sách Peer nguồn và trạng thái kết nối P2P:"/>
+    <ListView fx:id="sourcesStatusListView" prefHeight="150.0" VBox.vgrow="ALWAYS"/>
+
+    <Label fx:id="statusLabel" text="Sẵn sàng tải file." wrapText="true"/>
+</VBox>

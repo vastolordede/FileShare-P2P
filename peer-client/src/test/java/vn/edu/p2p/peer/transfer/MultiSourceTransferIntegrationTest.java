@@ -23,70 +23,82 @@ class MultiSourceTransferIntegrationTest {
     Path tempDir;
 
     @Test
-    void shouldDownloadFileConcurrentlyFromTwoPeersAndVerifySha256() throws Exception {
-        // Tạo file mẫu 700 KB (với pieceSize = 256 KB sẽ chia thành 3 pieces: 0, 1, 2)
-        Path originalFile = tempDir.resolve("sample-video.bin");
-        byte[] content = new byte[700 * 1024];
-        new Random(42).nextBytes(content);
+    void shouldDownloadFileConcurrentlyFromThreePeersAndVerifySha256() throws Exception {
+        // S42: Tạo file mẫu 1.1 MB (chia thành 5 pieces: 0, 1, 2, 3, 4) tải từ 3 Peer A, B, C
+        Path originalFile = tempDir.resolve("movie-3peers.bin");
+        byte[] content = new byte[1100 * 1024];
+        new Random(99).nextBytes(content);
         Files.write(originalFile, content);
 
         FileMetadata metadata = new FileMetadataBuilder().build(originalFile);
-        long fileId = 101L;
+        long fileId = 202L;
 
         PeerP2pSocketFactory socketFactory = new PeerP2pSocketFactory(PeerP2pSocketConfig.plainTcp());
 
-        // Peer A chỉ giữ Piece 0 và Piece 1 (PARTIAL)
-        LocalFileRegistry registryA = new LocalFileRegistry();
-        BitSet piecesA = new BitSet(3);
-        piecesA.set(0);
-        piecesA.set(1);
-        Path fileA = tempDir.resolve("peerA.bin");
-        Files.copy(originalFile, fileA);
-        registryA.registerDownloadingFile(fileId, fileA, metadata, piecesA);
+        // Peer 1 giữ Piece 0, 1
+        LocalFileRegistry reg1 = new LocalFileRegistry();
+        BitSet bits1 = new BitSet(5);
+        bits1.set(0);
+        bits1.set(1);
+        Path f1 = tempDir.resolve("p1.bin");
+        Files.copy(originalFile, f1);
+        reg1.registerDownloadingFile(fileId, f1, metadata, bits1);
 
-        // Peer B giữ Piece 1 và Piece 2 (PARTIAL)
-        LocalFileRegistry registryB = new LocalFileRegistry();
-        BitSet piecesB = new BitSet(3);
-        piecesB.set(1);
-        piecesB.set(2);
-        Path fileB = tempDir.resolve("peerB.bin");
-        Files.copy(originalFile, fileB);
-        registryB.registerDownloadingFile(fileId, fileB, metadata, piecesB);
+        // Peer 2 giữ Piece 2, 3
+        LocalFileRegistry reg2 = new LocalFileRegistry();
+        BitSet bits2 = new BitSet(5);
+        bits2.set(2);
+        bits2.set(3);
+        Path f2 = tempDir.resolve("p2.bin");
+        Files.copy(originalFile, f2);
+        reg2.registerDownloadingFile(fileId, f2, metadata, bits2);
 
-        try (PeerUploadServer serverA = new PeerUploadServer(0, registryA, socketFactory);
-             PeerUploadServer serverB = new PeerUploadServer(0, registryB, socketFactory)) {
+        // Peer 3 giữ Piece 3, 4
+        LocalFileRegistry reg3 = new LocalFileRegistry();
+        BitSet bits3 = new BitSet(5);
+        bits3.set(3);
+        bits3.set(4);
+        Path f3 = tempDir.resolve("p3.bin");
+        Files.copy(originalFile, f3);
+        reg3.registerDownloadingFile(fileId, f3, metadata, bits3);
 
-            serverA.start();
-            serverB.start();
+        try (PeerUploadServer s1 = new PeerUploadServer(0, reg1, socketFactory);
+             PeerUploadServer s2 = new PeerUploadServer(0, reg2, socketFactory);
+             PeerUploadServer s3 = new PeerUploadServer(0, reg3, socketFactory)) {
+
+            s1.start();
+            s2.start();
+            s3.start();
 
             List<FileSourceInfo> sources = List.of(
-                    new FileSourceInfo("peer-A", "PARTIAL", "127.0.0.1", serverA.listeningPort(), System.currentTimeMillis()),
-                    new FileSourceInfo("peer-B", "PARTIAL", "127.0.0.1", serverB.listeningPort(), System.currentTimeMillis())
+                    new FileSourceInfo("peer-1", "PARTIAL", "127.0.0.1", s1.listeningPort(), System.currentTimeMillis()),
+                    new FileSourceInfo("peer-2", "PARTIAL", "127.0.0.1", s2.listeningPort(), System.currentTimeMillis()),
+                    new FileSourceInfo("peer-3", "PARTIAL", "127.0.0.1", s3.listeningPort(), System.currentTimeMillis())
             );
 
-            // Peer C tải đồng thời từ Peer A + Peer B
-            LocalFileRegistry registryC = new LocalFileRegistry();
+            LocalFileRegistry downloaderReg = new LocalFileRegistry();
             PeerDownloadClient downloadClient = new PeerDownloadClient(socketFactory);
             MultiSourceDownloadEngine engine = new MultiSourceDownloadEngine(
-                    registryC,
+                    downloaderReg,
                     downloadClient,
                     4,
                     PieceScheduler.Strategy.RAREST_FIRST
             );
 
-            Path downloadedFile = tempDir.resolve("peerC-downloaded.bin");
+            Path targetFile = tempDir.resolve("downloaded-from-3-peers.bin");
             DownloadSessionResult result = engine.downloadFile(
                     fileId,
                     sources,
-                    downloadedFile,
+                    targetFile,
                     null,
                     new AtomicBoolean(false)
             );
 
             assertEquals("COMPLETED", result.status());
             assertEquals(content.length, result.bytesReceived());
-            assertEquals(metadata.fileHash(), FileHashUtil.sha256(downloadedFile));
-            assertTrue(registryC.find(fileId).orElseThrow().isComplete());
+            assertEquals(3, result.sourceStats().size());
+            assertEquals(metadata.fileHash(), FileHashUtil.sha256(targetFile));
+            assertTrue(downloaderReg.find(fileId).orElseThrow().isComplete());
         }
     }
 }
