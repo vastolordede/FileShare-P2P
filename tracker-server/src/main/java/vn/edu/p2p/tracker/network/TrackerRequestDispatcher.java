@@ -8,10 +8,14 @@ import vn.edu.p2p.common.dto.HeartbeatResponse;
 import vn.edu.p2p.common.dto.LoginRequest;
 import vn.edu.p2p.common.dto.LoginResponse;
 import vn.edu.p2p.common.dto.LogoutRequest;
+import vn.edu.p2p.common.dto.RecordTransferRequest;
+import vn.edu.p2p.common.dto.RecordTransferResponse;
 import vn.edu.p2p.common.dto.SearchRequest;
 import vn.edu.p2p.common.dto.SearchResponse;
 import vn.edu.p2p.common.dto.ShareFileRequest;
 import vn.edu.p2p.common.dto.ShareFileResponse;
+import vn.edu.p2p.common.dto.TransferHistoryRequest;
+import vn.edu.p2p.common.dto.TransferHistoryResponse;
 import vn.edu.p2p.common.dto.UnshareFileRequest;
 import vn.edu.p2p.common.dto.UnshareFileResponse;
 import vn.edu.p2p.common.protocol.MessageEnvelope;
@@ -25,6 +29,7 @@ import vn.edu.p2p.tracker.peer.PeerSessionService;
 import vn.edu.p2p.tracker.peer.SessionException;
 import vn.edu.p2p.tracker.source.FileSourceException;
 import vn.edu.p2p.tracker.source.FileSourceService;
+import vn.edu.p2p.tracker.transfer.TransferHistoryService;
 
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -36,13 +41,14 @@ public final class TrackerRequestDispatcher {
     private final PeerSessionService peerSessionService;
     private final FileSourceService fileSourceService;
     private final FileCatalogService fileCatalogService;
+    private final TransferHistoryService transferHistoryService;
     private final RequestValidator validator;
 
     public TrackerRequestDispatcher(
             AuthService authService,
             PeerSessionService peerSessionService
     ) {
-        this(authService, peerSessionService, null, null, new RequestValidator());
+        this(authService, peerSessionService, null, null, null, new RequestValidator());
     }
 
     public TrackerRequestDispatcher(
@@ -50,7 +56,7 @@ public final class TrackerRequestDispatcher {
             PeerSessionService peerSessionService,
             FileSourceService fileSourceService
     ) {
-        this(authService, peerSessionService, fileSourceService, null, new RequestValidator());
+        this(authService, peerSessionService, fileSourceService, null, null, new RequestValidator());
     }
 
     /** T11-T25: overload that also wires in Share/Search/Unshare (FileCatalogService). */
@@ -60,7 +66,25 @@ public final class TrackerRequestDispatcher {
             FileSourceService fileSourceService,
             FileCatalogService fileCatalogService
     ) {
-        this(authService, peerSessionService, fileSourceService, fileCatalogService, new RequestValidator());
+        this(authService, peerSessionService, fileSourceService, fileCatalogService, null, new RequestValidator());
+    }
+
+    /** S35-S37: overload that also wires in TransferHistoryService. */
+    public TrackerRequestDispatcher(
+            AuthService authService,
+            PeerSessionService peerSessionService,
+            FileSourceService fileSourceService,
+            FileCatalogService fileCatalogService,
+            TransferHistoryService transferHistoryService
+    ) {
+        this(
+                authService,
+                peerSessionService,
+                fileSourceService,
+                fileCatalogService,
+                transferHistoryService,
+                new RequestValidator()
+        );
     }
 
     TrackerRequestDispatcher(
@@ -70,10 +94,22 @@ public final class TrackerRequestDispatcher {
             FileCatalogService fileCatalogService,
             RequestValidator validator
     ) {
+        this(authService, peerSessionService, fileSourceService, fileCatalogService, null, validator);
+    }
+
+    TrackerRequestDispatcher(
+            AuthService authService,
+            PeerSessionService peerSessionService,
+            FileSourceService fileSourceService,
+            FileCatalogService fileCatalogService,
+            TransferHistoryService transferHistoryService,
+            RequestValidator validator
+    ) {
         this.authService = authService;
         this.peerSessionService = peerSessionService;
         this.fileSourceService = fileSourceService;
         this.fileCatalogService = fileCatalogService;
+        this.transferHistoryService = transferHistoryService;
         this.validator = validator;
     }
 
@@ -89,14 +125,13 @@ public final class TrackerRequestDispatcher {
                 case SHARE_FILE_REQUEST -> handleShareFile(request);
                 case SEARCH_REQUEST -> handleSearch(request);
                 case UNSHARE_FILE_REQUEST -> handleUnshareFile(request);
-                case LOGIN_RESPONSE, LOGOUT_RESPONSE, HEARTBEAT_ACK,
-                        FILE_SOURCES_RESPONSE, SHARE_FILE_RESPONSE,
-                        SEARCH_RESPONSE, UNSHARE_FILE_RESPONSE, ERROR ->
-                        TrackerErrorResponses.forRequest(
-                                request,
-                                "UNSUPPORTED_MESSAGE",
-                                "Tracker accepts request messages only."
-                        );
+                case RECORD_TRANSFER_REQUEST -> handleRecordTransfer(request);
+                case TRANSFER_HISTORY_REQUEST -> handleTransferHistory(request);
+                default -> TrackerErrorResponses.forRequest(
+                        request,
+                        "UNSUPPORTED_MESSAGE",
+                        "Tracker accepts Tracker request messages only."
+                );
             };
         } catch (RequestValidationException e) {
             return TrackerErrorResponses.forRequest(
@@ -265,6 +300,56 @@ public final class TrackerRequestDispatcher {
 
         return MessageEnvelope.success(
                 MessageType.UNSHARE_FILE_RESPONSE,
+                request.requestId(),
+                ProtocolCodec.toPayload(response)
+        );
+    }
+
+    /** S35-S37: record transfer session start/completion and participating peer sources. */
+    private MessageEnvelope handleRecordTransfer(MessageEnvelope request) throws Exception {
+        if (transferHistoryService == null) {
+            return TrackerErrorResponses.forRequest(
+                    request,
+                    "FEATURE_UNAVAILABLE",
+                    "Transfer history is not configured on this Tracker."
+            );
+        }
+
+        RecordTransferRequest payload = ProtocolCodec.fromPayload(
+                request.payload(), RecordTransferRequest.class
+        );
+        if (payload == null) {
+            throw new RequestValidationException("INVALID_REQUEST", "RecordTransferRequest payload is required");
+        }
+        RecordTransferResponse response = transferHistoryService.recordTransfer(payload);
+
+        return MessageEnvelope.success(
+                MessageType.RECORD_TRANSFER_RESPONSE,
+                request.requestId(),
+                ProtocolCodec.toPayload(response)
+        );
+    }
+
+    /** S38: fetch transfer history for the current peer. */
+    private MessageEnvelope handleTransferHistory(MessageEnvelope request) throws Exception {
+        if (transferHistoryService == null) {
+            return TrackerErrorResponses.forRequest(
+                    request,
+                    "FEATURE_UNAVAILABLE",
+                    "Transfer history is not configured on this Tracker."
+            );
+        }
+
+        TransferHistoryRequest payload = ProtocolCodec.fromPayload(
+                request.payload(), TransferHistoryRequest.class
+        );
+        if (payload == null) {
+            throw new RequestValidationException("INVALID_REQUEST", "TransferHistoryRequest payload is required");
+        }
+        TransferHistoryResponse response = transferHistoryService.getHistory(payload);
+
+        return MessageEnvelope.success(
+                MessageType.TRANSFER_HISTORY_RESPONSE,
                 request.requestId(),
                 ProtocolCodec.toPayload(response)
         );
