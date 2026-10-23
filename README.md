@@ -1,10 +1,8 @@
-# FileShare-P2P — Week 1 Starter
-
-Starter project cho đồ án **P2P File Sharing** theo scope đã chốt.
-
-## Phạm vi gói Week 1
-
-Phần của **Người 1 — Account & Tracker Control**:
+# FileShare-P2P
+Phạm Quách Thành Đặng - 3124410070
+Nguyễn Thái Thảo - 3124410329
+Nguyễn Hoàng Sang - 3124410301
+đồ án **P2P File Sharing** .
 
 - Khởi tạo Gradle multi-module.
 - Chốt cấu trúc `common`, `tracker-server`, `peer-client`.
@@ -19,8 +17,6 @@ Phần của **Người 1 — Account & Tracker Control**:
 - JavaFX Login UI skeleton.
 - Login flow / Logout flow / Heartbeat flow.
 - Unit test cho protocol codec.
-
-> Week 1 **chưa triển khai login thật qua TCP và PostgreSQL**. Phần đó là Week 2.
 
 ## Stack
 
